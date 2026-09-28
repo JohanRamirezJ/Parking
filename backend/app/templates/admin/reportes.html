@@ -1,0 +1,41 @@
+{% extends "admin/base.html" %}
+{% block titulo %}Reportes · SmartPark Admin{% endblock %}
+{% block contenido %}
+<div class="fila">
+  <h1 style="margin:0">Usuarios reportados</h1>
+  <span class="espacio"></span>
+  {% for e in ['pendiente', 'resuelto', 'descartado', 'todos'] %}
+    <a class="btn chico {{ 'primario' if e == estado }}" href="{{ url_for('admin.reportes', estado=e) }}">{{ e|capitalize }}</a>
+  {% endfor %}
+</div>
+{% if reportes %}
+<div class="tabla"><table>
+  <tr><th>#</th><th>Reseña reportada</th><th>Usuario reportado</th><th>Motivo</th><th>Fecha</th><th>Estado</th><th>Acción</th></tr>
+  {% for r in reportes %}
+  <tr>
+    <td>{{ r.id }}</td>
+    <td>{% if r.resena %}<strong>{{ r.resena.calificacion }}★</strong> «{{ r.resena.comentario or 'sin comentario' }}»<br><span class="muted">{{ r.resena.parqueadero.nombre }}</span>{% else %}<span class="muted">(reseña eliminada)</span>{% endif %}</td>
+    <td>{{ r.usuario_reportado.nombre }}<br><span class="muted">{{ r.usuario_reportado.email }} · {{ r.usuario_reportado.advertencias }} advert. · {{ 'activo' if r.usuario_reportado.activo else 'suspendido' }}</span></td>
+    <td>{{ r.motivo }}<br><span class="muted">por {{ r.usuario_reportante.nombre }}</span></td>
+    <td class="muted">{{ r.fecha_reporte.strftime('%Y-%m-%d %H:%M') }}</td>
+    <td><span class="pill {{ 'pend' if r.estado == 'pendiente' else 'no' }}">{{ r.estado }}</span></td>
+    <td>
+      {% if r.estado == 'pendiente' %}
+      <form method="post" action="{{ url_for('admin.accion_reporte', rid=r.id) }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <input name="observaciones" placeholder="Observaciones (opcional)" style="margin-bottom:6px">
+        <div class="acciones">
+          <button class="btn chico" name="accion" value="advertir">Advertir</button>
+          <button class="btn chico peligro" name="accion" value="suspender" onclick="return confirm('¿Suspender a este usuario?')">Suspender</button>
+          <button class="btn chico" name="accion" value="descartar">Descartar</button>
+        </div>
+      </form>
+      {% else %}<span class="muted">{{ r.observaciones_admin or '' }}</span>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% else %}
+<div class="card vacio" style="height:auto;padding:40px">No hay reportes en estado «{{ estado }}».</div>
+{% endif %}
+{% endblock %}
