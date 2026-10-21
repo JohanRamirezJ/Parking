@@ -68,6 +68,7 @@ def login():
         if u and u.es_admin and u.activo and u.check_password(request.form.get("password", "")):
             ratelimit.limpiar(email)
             session.clear()
+            session.permanent = True  # vence según PERMANENT_SESSION_LIFETIME (8 h)
             session["admin_id"] = u.id
             u.ultimo_acceso = datetime.utcnow()
             db.session.commit()

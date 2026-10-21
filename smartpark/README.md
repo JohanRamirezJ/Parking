@@ -12,6 +12,7 @@ smartpark/
 
 - Backend: ver [backend/README.md](backend/README.md)
 - App móvil: ver [mobile/README.md](mobile/README.md)
+- **Documentación técnica:** [docs/](docs/README.md) — arquitectura, modelo de datos, API, panel admin, despliegue y pruebas
 
 ## Cobertura de requisitos
 
