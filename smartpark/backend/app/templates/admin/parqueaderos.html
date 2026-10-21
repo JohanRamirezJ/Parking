@@ -1,0 +1,46 @@
+{% extends "admin/base.html" %}
+{% block titulo %}Directorio · SmartPark Admin{% endblock %}
+{% block contenido %}
+<div class="fila">
+  <h1 style="margin:0">Directorio de parqueaderos</h1>
+  <span class="espacio"></span>
+  <form method="get" class="fila" style="margin:0">
+    <input name="q" value="{{ q }}" placeholder="Buscar por nombre o dirección" style="width:260px">
+    <button class="btn">Buscar</button>
+  </form>
+  <a class="btn primario" href="{{ url_for('admin.editar_parqueadero') }}">+ Nuevo parqueadero</a>
+</div>
+
+{% if parqueaderos %}
+<div class="tabla">
+<table>
+  <tr><th>Nombre</th><th>Dirección</th><th class="num">Hora</th><th class="num">Día</th><th>Horario</th><th class="num">Calif.</th><th class="num">Cupos</th><th>Estado</th><th></th></tr>
+  {% for p in parqueaderos %}
+  <tr>
+    <td><strong>{{ p.nombre }}</strong></td>
+    <td class="muted">{{ p.direccion }}</td>
+    <td class="num">{{ p.tarifa_hora|cop }}</td>
+    <td class="num">{{ p.tarifa_dia|cop }}</td>
+    <td>{% if p.horario_apertura %}{{ p.horario_apertura.strftime('%H:%M') }}–{{ p.horario_cierre.strftime('%H:%M') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="num">{{ '%.1f'|format(p.calificacion_promedio) if p.calificacion_promedio else '—' }} <span class="muted">({{ p.total_resenas() }})</span></td>
+    <td class="num">{{ p.capacidad_disponible_estimada if p.capacidad_disponible_estimada is not none else '—' }}/{{ p.capacidad_total or '—' }}</td>
+    <td><span class="pill {{ 'si' if p.activo else 'no' }}">{{ 'Activo' if p.activo else 'Inactivo' }}</span></td>
+    <td class="acciones">
+      <a class="btn chico" href="{{ url_for('admin.editar_parqueadero', pid=p.id) }}">Editar</a>
+      <form class="inline" method="post" action="{{ url_for('admin.cambiar_estado', pid=p.id) }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <button class="btn chico">{{ 'Desactivar' if p.activo else 'Activar' }}</button>
+      </form>
+      <form class="inline" method="post" action="{{ url_for('admin.eliminar_parqueadero', pid=p.id) }}" onsubmit="return confirm('¿Eliminar «{{ p.nombre }}» definitivamente? Se borrarán sus reseñas y visitas.')">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <button class="btn chico peligro">Eliminar</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+{% else %}
+<div class="card vacio" style="height:auto;padding:40px">{{ 'Sin resultados para «' ~ q ~ '».' if q else 'Aún no hay parqueaderos. Crea el primero.' }}</div>
+{% endif %}
+{% endblock %}

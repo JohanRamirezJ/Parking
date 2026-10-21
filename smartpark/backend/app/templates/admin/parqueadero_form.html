@@ -1,0 +1,59 @@
+{% extends "admin/base.html" %}
+{% block titulo %}{{ 'Editar' if p else 'Nuevo' }} parqueadero · SmartPark Admin{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+{% endblock %}
+{% macro campo(nombre, etiqueta, tipo='text', extra='', clave_error=None) -%}
+  {% set err = errores.get(clave_error or nombre) %}
+  <div class="campo {{ 'error' if err }}">
+    <label for="{{ nombre }}">{{ etiqueta }}</label>
+    <input id="{{ nombre }}" name="{{ nombre }}" type="{{ tipo }}" value="{{ datos.get(nombre, '') if datos.get(nombre) is not none else '' }}" {{ extra|safe }}>
+    {% if err %}<div class="msg">{{ err }}</div>{% endif %}
+  </div>
+{%- endmacro %}
+{% block contenido %}
+<div class="fila"><h1 style="margin:0">{{ 'Editar «' ~ p.nombre ~ '»' if p else 'Nuevo parqueadero' }}</h1></div>
+<form method="post" class="card">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    {{ campo('nombre', 'Nombre *', extra='required maxlength=100') }}
+    {{ campo('direccion', 'Dirección *', extra='required maxlength=200') }}
+    <div class="ancho">
+      <label>Ubicación * — haz clic en el mapa o escribe las coordenadas</label>
+      <div id="mapa"></div>
+    </div>
+    {{ campo('latitud', 'Latitud *', 'number', 'step=any required', 'ubicacion') }}
+    {{ campo('longitud', 'Longitud *', 'number', 'step=any required', 'ubicacion') }}
+    {{ campo('tarifa_hora', 'Tarifa por hora (COP)', 'number', 'step=50 min=0') }}
+    {{ campo('tarifa_dia', 'Tarifa por día (COP)', 'number', 'step=100 min=0') }}
+    {{ campo('horario_apertura', 'Hora de apertura', 'time', '', 'horario') }}
+    {{ campo('horario_cierre', 'Hora de cierre (igual a apertura = 24 h)', 'time', '', 'horario') }}
+    {{ campo('capacidad_total', 'Capacidad total (cupos)', 'number', 'min=0') }}
+    {{ campo('capacidad_disponible_estimada', 'Cupos disponibles estimados', 'number', 'min=0') }}
+    <div class="ancho">{{ campo('imagen_url', 'URL de imagen (opcional)', 'url') }}</div>
+    <div class="campo ancho"><label style="display:flex;gap:8px;align-items:center;color:var(--text)">
+      <input type="checkbox" name="activo" style="width:auto" {{ 'checked' if datos.get('activo') }}> Visible en la app</label></div>
+  </div>
+  <p class="muted">* Obligatorio. Debe registrarse al menos una tarifa. Las coordenadas deben estar dentro de Bogotá.</p>
+  <div class="fila">
+    <button class="btn primario">Guardar</button>
+    <a class="btn" href="{{ url_for('admin.parqueaderos') }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+<script>
+  if (window.L) {
+    const lat = document.getElementById('latitud'), lon = document.getElementById('longitud');
+    const ini = [parseFloat(lat.value) || 4.6533, parseFloat(lon.value) || -74.0836];
+    const mapa = L.map('mapa').setView(ini, lat.value ? 16 : 12);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
+    let marca = lat.value ? L.marker(ini).addTo(mapa) : null;
+    mapa.on('click', e => {
+      lat.value = e.latlng.lat.toFixed(6); lon.value = e.latlng.lng.toFixed(6);
+      marca ? marca.setLatLng(e.latlng) : (marca = L.marker(e.latlng).addTo(mapa));
+    });
+  }
+</script>
+{% endblock %}

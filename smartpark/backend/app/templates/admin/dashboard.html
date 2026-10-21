@@ -1,0 +1,75 @@
+{% extends "admin/base.html" %}
+{% block titulo %}Dashboard · SmartPark Admin{% endblock %}
+{% block contenido %}
+<div class="fila">
+  <h1 style="margin:0">Dashboard</h1>
+  <span class="espacio"></span>
+  <form class="fila no-print" style="margin:0" method="get">
+    <label style="margin:0">Desde</label><input type="date" name="desde" value="{{ m.desde }}" style="width:auto">
+    <label style="margin:0">Hasta</label><input type="date" name="hasta" value="{{ m.hasta }}" style="width:auto">
+    <button class="btn">Filtrar</button>
+  </form>
+  <a class="btn no-print" href="{{ url_for('admin.exportar', desde=m.desde, hasta=m.hasta) }}">Exportar Excel (CSV)</a>
+  <button class="btn no-print" onclick="window.print()">Imprimir / PDF</button>
+</div>
+
+<div class="kpis">
+  <div class="card kpi"><div class="v">{{ m.kpi.parqueaderos_activos }}</div><div class="l">Parqueaderos activos</div></div>
+  <div class="card kpi"><div class="v">{{ m.kpi.usuarios }}</div><div class="l">Usuarios registrados</div></div>
+  <div class="card kpi"><div class="v">{{ m.kpi.busquedas }}</div><div class="l">Búsquedas en el periodo</div></div>
+  <div class="card kpi"><div class="v">{{ m.kpi.resenas }}</div><div class="l">Reseñas en el periodo</div></div>
+  <div class="card kpi"><div class="v">{{ m.kpi.consultas_ia }}</div><div class="l">Consultas al chat IA</div></div>
+  <div class="card kpi"><div class="v">{{ m.kpi.cobertura_tarifas }}%</div><div class="l">Con tarifa registrada (meta 90%)</div></div>
+  <div class="card kpi"><div class="v">{{ m.kpi.cobertura_resenas }}%</div><div class="l">Con al menos una reseña (meta 30%)</div></div>
+  <div class="card kpi"><div class="v">{{ m.kpi.tarifa_promedio_hora|cop }}</div><div class="l">Tarifa promedio por hora</div></div>
+  <div class="card kpi"><div class="v">{{ m.kpi.reportes_pendientes }}</div><div class="l"><a href="{{ url_for('admin.reportes') }}">Reportes pendientes</a></div></div>
+</div>
+
+<div class="grid2">
+  {% for clave, titulo in [('busquedas','Búsquedas por día'), ('tarifas','Distribución de tarifas por hora'), ('calificaciones','Distribución de calificaciones'), ('ocupacion','Ocupación estimada (%)')] %}
+  <div class="card">
+    <h2>{{ titulo }}</h2>
+    {% if m.graficas[clave].vacio %}
+      <div class="vacio">No hay datos para el filtro seleccionado.<br>Prueba con otro rango de fechas.</div>
+    {% else %}
+      <div class="chart-box"><canvas id="g-{{ clave }}"></canvas></div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card" style="margin-top:12px">
+  <h2>Parqueaderos más recomendados por el chat IA</h2>
+  {% if m.top_chat %}
+  <table>
+    <tr><th>Parqueadero</th><th class="num">Recomendaciones</th></tr>
+    {% for nombre, n in m.top_chat %}<tr><td>{{ nombre }}</td><td class="num">{{ n }}</td></tr>{% endfor %}
+  </table>
+  {% else %}<p class="muted">Aún no hay consultas al chat en este periodo.</p>{% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script>
+  const G = {{ graficas_json|safe }};
+  const tipos = { busquedas: 'line', tarifas: 'bar', calificaciones: 'bar', ocupacion: 'bar' };
+  if (window.Chart) {
+    Chart.defaults.font.family = 'system-ui, sans-serif';
+    Chart.defaults.color = '#667085';
+    for (const [k, d] of Object.entries(G)) {
+      const el = document.getElementById('g-' + k);
+      if (!el) continue;
+      new Chart(el, {
+        type: tipos[k],
+        data: { labels: d.labels, datasets: [{ data: d.data, backgroundColor: '#1f6feb', borderColor: '#1f6feb', tension: .3, fill: false, borderRadius: 4 }] },
+        options: {
+          maintainAspectRatio: false, indexAxis: k === 'ocupacion' ? 'y' : 'x',
+          plugins: { legend: { display: false } },
+          scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+      });
+    }
+  }
+</script>
+{% endblock %}

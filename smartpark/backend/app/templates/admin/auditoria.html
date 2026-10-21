@@ -1,0 +1,24 @@
+{% extends "admin/base.html" %}
+{% block titulo %}Auditoría · SmartPark Admin{% endblock %}
+{% block contenido %}
+<h1>Registro de auditoría</h1>
+<p class="muted">Últimos 200 cambios realizados desde el panel (trazabilidad del directorio y de usuarios).</p>
+{% if logs %}
+<div class="tabla"><table>
+  <tr><th>Fecha</th><th>Admin</th><th>Acción</th><th>Entidad</th><th>Cambio</th><th>IP</th></tr>
+  {% for l in logs %}
+  <tr>
+    <td class="muted">{{ l.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
+    <td>{{ l.usuario.nombre if l.usuario else '—' }}</td>
+    <td><span class="pill {{ 'si' if l.accion == 'CREATE' else 'pend' if l.accion == 'UPDATE' else 'no' }}">{{ l.accion }}</span></td>
+    <td>{{ l.entidad }} #{{ l.entidad_id }}</td>
+    <td><details><summary class="muted">ver datos</summary>
+      <div style="font:12px/1.4 ui-monospace,monospace;white-space:pre-wrap;max-width:520px">Antes: {{ l.datos_previos or '—' }}
+
+Después: {{ l.datos_nuevos or '—' }}</div></details></td>
+    <td class="muted">{{ l.ip_origen }}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% else %}<div class="card vacio" style="height:auto;padding:40px">Aún no hay cambios registrados.</div>{% endif %}
+{% endblock %}
