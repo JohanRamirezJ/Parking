@@ -13,4 +13,4 @@ USER smartpark
 
 EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=3s CMD python -c "import urllib.request;urllib.request.urlopen('http://localhost:5000/api/salud')"
-CMD ["gunicorn", "-w", "3", "-b", "0.0.0.0:5000", "--access-logfile", "-", "wsgi:app"]
+CMD ["gunicorn", "--preload", "-w", "3", "-b", "0.0.0.0:5000", "--access-logfile", "-", "wsgi:app"]

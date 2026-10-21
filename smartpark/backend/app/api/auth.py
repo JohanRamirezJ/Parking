@@ -7,6 +7,7 @@ from sqlalchemy import select
 from ..extensions import db
 from ..models import Notificacion, Usuario, Visita
 from ..services.auth import emitir_token, token_requerido
+from ..services import ratelimit
 from ..services.errors import ApiError
 from ..services.validacion import email_valido, telefono_valido
 from . import api_bp
@@ -49,11 +50,14 @@ def registro():
 def login():
     d = _json()
     email = (d.get("email") or "").strip().lower()
+    ratelimit.exigir_no_bloqueado(email)
     u = db.session.scalar(select(Usuario).where(Usuario.email == email))
     if not u or not u.check_password(d.get("password") or ""):
+        ratelimit.registrar_fallo(email)
         raise ApiError("Correo o contraseña incorrectos", 401, "credenciales_invalidas")
     if not u.activo:
         raise ApiError("Tu cuenta está suspendida", 403, "cuenta_suspendida")
+    ratelimit.limpiar(email)
     u.ultimo_acceso = datetime.utcnow()
     db.session.commit()
     return jsonify({"token": emitir_token(u), "usuario": u.to_dict()})

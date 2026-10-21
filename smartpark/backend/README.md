@@ -26,13 +26,36 @@ docker compose exec api flask seed            # opcional
 docker compose exec api flask crear-admin admin@smartpark.co admin12345
 ```
 
+## Despliegue a producción
+
+Variables de entorno (ver `.env.example`):
+
+| Variable | Obligatoria | Nota |
+|---|---|---|
+| `FLASK_ENV=production` | sí | Activa cookie `Secure` y exige `SECRET_KEY` (si falta, la app no arranca) |
+| `SECRET_KEY` | sí | Valor largo y aleatorio: `python -c "import secrets;print(secrets.token_hex(32))"` |
+| `DATABASE_URL` | sí | `postgresql+psycopg://usuario:clave@host:5432/db` |
+| `POSTGRES_PASSWORD` | con compose | Clave de la base de datos del `docker-compose.yml` |
+| `CORS_ORIGINS` | no | Orígenes permitidos separados por comas (defecto `*`) |
+| `LOGIN_MAX_INTENTOS` / `LOGIN_VENTANA_S` | no | Bloqueo de login tras N fallos en la ventana (defecto 10 / 900 s) |
+
+```bash
+export SECRET_KEY=$(python -c "import secrets;print(secrets.token_hex(32))")
+export POSTGRES_PASSWORD=una-clave-fuerte FLASK_ENV=production
+docker compose up -d --build
+docker compose exec api flask crear-admin correo@dominio.co "ClaveSegura123"
+curl localhost:5000/api/salud
+```
+
+Poner un proxy con HTTPS (Nginx, Caddy o el balanceador del proveedor) delante del puerto 5000: la cookie del panel admin solo viaja por HTTPS. Gunicorn arranca con `--preload` para que las tablas se creen una sola vez. En la app móvil, ajustar la URL del API en `mobile/lib/config.dart`.
+
 ## Pruebas
 
 ```bash
 python -m pytest -q
 ```
 
-31 pruebas funcionales trazadas a las historias de usuario y RF del documento de especificaciones.
+37 pruebas: funcionales (trazadas a las historias de usuario y RF) y de seguridad (límite de intentos de login, cabeceras, exigencia de `SECRET_KEY` en producción). El CI (`.github/workflows/ci.yml`) las corre en cada push y PR, además de construir la imagen Docker y probar `/api/salud`.
 
 ## Endpoints
 

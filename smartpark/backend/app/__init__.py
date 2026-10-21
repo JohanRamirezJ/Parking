@@ -1,9 +1,11 @@
 """SmartPark — backend Flask (API REST + panel web de administración)."""
+import os
+
 import click
 from flask import Flask, redirect, url_for
 from flask_cors import CORS
 
-from .config import get_config
+from .config import SECRET_POR_DEFECTO, get_config
 from .extensions import db
 
 
@@ -11,8 +13,14 @@ def create_app(entorno: str | None = None) -> Flask:
     app = Flask(__name__)
     app.config.from_object(get_config(entorno))
 
+    if app.config.get("SECRET_KEY") == SECRET_POR_DEFECTO and not (
+            app.config.get("TESTING") or app.debug or os.getenv("FLASK_ENV") == "development"):
+        if os.getenv("FLASK_ENV") == "production":
+            raise RuntimeError("Define SECRET_KEY (y opcionalmente JWT_SECRET) en producción.")
+        app.logger.warning("SECRET_KEY por defecto: solo para desarrollo.")
+
     db.init_app(app)
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    CORS(app, resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}})
 
     from .services.errors import registrar_manejadores
     registrar_manejadores(app)
@@ -21,6 +29,13 @@ def create_app(entorno: str | None = None) -> Flask:
     from .admin import admin_bp
     app.register_blueprint(api_bp)
     app.register_blueprint(admin_bp)
+
+    @app.after_request
+    def _cabeceras_seguridad(resp):
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("Referrer-Policy", "same-origin")
+        return resp
 
     @app.get("/")
     def raiz():

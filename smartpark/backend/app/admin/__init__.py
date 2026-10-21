@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from ..extensions import db
 from ..models import (ConsultaIA, EventoBusqueda, LogAuditoria, Notificacion, Parqueadero,
                       ReporteUsuario, Resena, Usuario)
+from ..services import ratelimit
 from ..services.directorio import aplicar_datos, auditar, snapshot
 from ..services.validacion import validar_parqueadero
 
@@ -60,14 +61,19 @@ def _cop(v):
 def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
+        if ratelimit.bloqueado(email):
+            flash("Demasiados intentos fallidos, espera unos minutos", "error")
+            return render_template("admin/login.html"), 429
         u = db.session.scalar(select(Usuario).where(Usuario.email == email))
         if u and u.es_admin and u.activo and u.check_password(request.form.get("password", "")):
+            ratelimit.limpiar(email)
             session.clear()
             session["admin_id"] = u.id
             u.ultimo_acceso = datetime.utcnow()
             db.session.commit()
             destino = request.args.get("siguiente", "")
             return redirect(destino if destino.startswith("/admin") else url_for("admin.dashboard"))
+        ratelimit.registrar_fallo(email)
         flash("Credenciales inválidas o sin permisos de administrador", "error")
     return render_template("admin/login.html")
 
