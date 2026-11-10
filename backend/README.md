@@ -18,13 +18,7 @@ python wsgi.py                                       # http://localhost:5000
 
 ## Con Docker (PostgreSQL)
 
-Desde la raíz del repo:
-
-```bash
-docker compose up --build
-docker compose exec api flask seed            # opcional
-docker compose exec api flask crear-admin admin@smartpark.co admin12345
-```
+Ver la sección "Levantar todo con Docker" del [README principal](../README.md). La imagen se construye sobre **Ubuntu 24.04** y el `docker/entrypoint.sh` espera a la base de datos, ejecuta `flask init-db`, carga los datos demo si `SEED_DEMO=1`, crea el admin de `ADMIN_EMAIL`/`ADMIN_PASSWORD` si se definen y arranca gunicorn.
 
 ## Pruebas
 

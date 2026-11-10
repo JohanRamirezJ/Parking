@@ -7,3 +7,4 @@ bcrypt==4.*
 psycopg[binary]==3.2.*
 gunicorn==23.*
 pytest==8.*
+tzdata>=2024.1

@@ -1,30 +1,59 @@
+# SmartPark — entorno completo en Docker
+#   docker compose up -d --build                 → PostgreSQL + backend (API y panel admin)
+#   docker compose --profile web up -d --build   → además la app Flutter compilada para web
+name: smartpark
+
 services:
   db:
-    image: postgres:15-alpine
+    image: postgres:16
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: smartpark
-      POSTGRES_USER: smartpark
-      POSTGRES_PASSWORD: smartpark
+      POSTGRES_DB: ${POSTGRES_DB:-smartpark}
+      POSTGRES_USER: ${POSTGRES_USER:-smartpark}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartpark}
+      TZ: America/Bogota
     volumes:
       - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U smartpark"]
-      interval: 5s
-      retries: 10
-
-  api:
-    build: ./backend
-    env_file:
-      - path: ./backend/.env
-        required: false
-    environment:
-      DATABASE_URL: postgresql+psycopg://smartpark:smartpark@db:5432/smartpark
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-cambiar}
     ports:
-      - "5000:5000"
+      - "${DB_PORT:-5433}:5432"   # 5433 en el host para no chocar con un PostgreSQL local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ./backend
+    image: smartpark-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-smartpark}:${POSTGRES_PASSWORD:-smartpark}@db:5432/${POSTGRES_DB:-smartpark}
+      SECRET_KEY: ${SECRET_KEY:-cambia-esta-clave}
+      JWT_SECRET: ${JWT_SECRET:-cambia-esta-clave-jwt}
+      SEED_DEMO: ${SEED_DEMO:-1}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
+    ports:
+      - "${API_PORT:-5000}:5000"
     depends_on:
       db:
         condition: service_healthy
+
+  web:
+    profiles: ["web"]
+    build:
+      context: ./mobile
+      dockerfile: Dockerfile.web
+      args:
+        API_URL: http://localhost:${API_PORT:-5000}
+    image: smartpark-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - backend
 
 volumes:
   pgdata:

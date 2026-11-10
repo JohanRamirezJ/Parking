@@ -56,6 +56,13 @@ def _migraciones_ligeras():
 
 
 def _registrar_cli(app: Flask):
+    @app.cli.command("init-db")
+    def init_db_cmd():
+        """Crea las tablas y aplica las columnas nuevas (idempotente)."""
+        db.create_all()
+        _migraciones_ligeras()
+        click.echo("Base de datos lista.")
+
     @app.cli.command("seed")
     def seed_cmd():
         """Carga parqueaderos de ejemplo y usuarios demo."""
