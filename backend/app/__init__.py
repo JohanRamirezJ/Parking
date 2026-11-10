@@ -29,9 +29,30 @@ def create_app(entorno: str | None = None) -> Flask:
     with app.app_context():
         from . import models  # noqa: F401
         db.create_all()
+        _migraciones_ligeras()
 
     _registrar_cli(app)
     return app
+
+
+# Columnas añadidas después de la v0.1. create_all() no altera tablas existentes, así que
+# se agregan aquí para no obligar al equipo a borrar su base de datos de desarrollo.
+COLUMNAS_NUEVAS = {
+    "usuario": {"preferencias": "TEXT"},
+    "parqueadero": {"calificacion_seguridad": "FLOAT"},
+    "resena": {"calificacion_seguridad": "INTEGER"},
+}
+
+
+def _migraciones_ligeras():
+    from sqlalchemy import inspect, text
+    insp = inspect(db.engine)
+    with db.engine.begin() as con:
+        for tabla, cols in COLUMNAS_NUEVAS.items():
+            existentes = {c["name"] for c in insp.get_columns(tabla)}
+            for col, tipo in cols.items():
+                if col not in existentes:
+                    con.execute(text(f"ALTER TABLE {tabla} ADD COLUMN {col} {tipo}"))
 
 
 def _registrar_cli(app: Flask):

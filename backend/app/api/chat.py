@@ -25,7 +25,7 @@ def chat():
     except (TypeError, ValueError):
         raise ApiError("Coordenadas inválidas", 400, "validacion")
 
-    r = chat_srv.responder(consulta, lat, lon)
+    r = chat_srv.responder(consulta, lat, lon, g.usuario.get_preferencias())
     rec = r.get("parqueadero_recomendado")
     db.session.add(ConsultaIA(usuario_id=g.usuario.id, consulta=consulta, respuesta=r["respuesta"],
                               parqueadero_recomendado_id=rec["id"] if rec else None,

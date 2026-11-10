@@ -77,7 +77,9 @@ def cargar(semilla: int = 42) -> int:
                 fecha = ahora - timedelta(days=rnd.randint(0, 25), hours=rnd.randint(0, 23))
                 db.session.add(Visita(usuario_id=u.id, parqueadero_id=p.id, fecha_visita=fecha,
                                       tarifa_pagada=p.tarifa_hora))
-                db.session.add(Resena(usuario_id=u.id, parqueadero=p, calificacion=rnd.choice([2, 3, 4, 4, 5, 5]),
+                cal = rnd.choice([2, 3, 4, 4, 5, 5])
+                seg = max(1, min(5, cal + rnd.choice([-1, 0, 0, 1])))
+                db.session.add(Resena(usuario_id=u.id, parqueadero=p, calificacion=cal, calificacion_seguridad=seg,
                                       comentario=rnd.choice(COMENTARIOS), fecha=fecha))
         db.session.flush()
         p.recalcular_promedio()

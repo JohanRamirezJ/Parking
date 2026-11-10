@@ -62,6 +62,7 @@ lib/
     mapa_screen.dart     HU 4, 5, 6, 7 (OpenStreetMap vía flutter_map, sin API key)
     lista_screen.dart    HU 8, 9
     detalle_screen.dart  HU 10, 11 + reportar reseña
+    recomendar_screen.dart  Módulo de IA: perfiles, pesos 0–10, horas y ranking con desglose
     chat_screen.dart     RF-12 asistente IA
     perfil_screen.dart   HU 3 + notificaciones de moderación
 ```

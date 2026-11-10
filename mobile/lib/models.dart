@@ -102,3 +102,70 @@ class Destino {
   final double longitud;
   Destino(this.nombre, this.latitud, this.longitud);
 }
+
+/// Resultado del módulo de IA multicriterio.
+class CriterioEvaluado {
+  final String clave;
+  final String texto;
+  final double puntaje; // 0–1
+  final double peso;
+  final double pesoPct;
+  final double aporte; // puntos sobre 100
+  final bool estimado;
+
+  CriterioEvaluado(this.clave, this.texto, this.puntaje, this.peso, this.pesoPct, this.aporte, this.estimado);
+
+  factory CriterioEvaluado.fromJson(String clave, Map<String, dynamic> j) => CriterioEvaluado(
+        clave,
+        j['texto'] ?? '',
+        (j['puntaje'] as num).toDouble(),
+        (j['peso'] as num).toDouble(),
+        (j['peso_pct'] as num).toDouble(),
+        (j['aporte'] as num).toDouble(),
+        j['estimado'] == true,
+      );
+}
+
+class OpcionRecomendada {
+  final int posicion;
+  final double puntaje;
+  final Parqueadero parqueadero;
+  final List<CriterioEvaluado> criterios;
+  final int costoTotal;
+  final List<String> alertas;
+  final String justificacion;
+
+  OpcionRecomendada(this.posicion, this.puntaje, this.parqueadero, this.criterios, this.costoTotal, this.alertas,
+      this.justificacion);
+
+  factory OpcionRecomendada.fromJson(Map<String, dynamic> j) {
+    final c = Map<String, dynamic>.from(j['criterios']);
+    return OpcionRecomendada(
+      j['posicion'],
+      (j['puntaje'] as num).toDouble(),
+      Parqueadero.fromJson(Map<String, dynamic>.from(j['parqueadero'])),
+      [for (final e in c.entries) CriterioEvaluado.fromJson(e.key, Map<String, dynamic>.from(e.value))],
+      (j['costo_total_estimado'] as num).round(),
+      List<String>.from(j['alertas'] ?? const []),
+      j['justificacion'] ?? '',
+    );
+  }
+}
+
+class Recomendacion {
+  final String perfil;
+  final Map<String, double> pesos;
+  final double horas;
+  final List<OpcionRecomendada> resultados;
+  final String? mensaje;
+
+  Recomendacion(this.perfil, this.pesos, this.horas, this.resultados, this.mensaje);
+
+  factory Recomendacion.fromJson(Map<String, dynamic> j) => Recomendacion(
+        j['perfil'] ?? '',
+        Map<String, dynamic>.from(j['pesos']).map((k, v) => MapEntry(k, (v as num).toDouble())),
+        (j['horas'] as num).toDouble(),
+        [for (final r in j['resultados'] as List) OpcionRecomendada.fromJson(Map<String, dynamic>.from(r))],
+        j['mensaje'],
+      );
+}

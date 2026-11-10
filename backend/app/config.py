@@ -24,6 +24,15 @@ class Config:
     BOGOTA_LON_MIN = -74.25
     BOGOTA_LON_MAX = -73.99
 
+    # Módulo de IA: supuestos del costo de manejar (todos ajustables por el usuario)
+    # Precio de referencia galón gasolina corriente Bogotá, nov. 2026: $16.331 (El Colombiano / MinEnergía)
+    PRECIO_GALON_COP = float(os.getenv("PRECIO_GALON_COP", "16331"))
+    RENDIMIENTO_KM_GALON = float(os.getenv("RENDIMIENTO_KM_GALON", "30"))   # carro particular en ciudad (supuesto)
+    COSTO_RODAMIENTO_KM = float(os.getenv("COSTO_RODAMIENTO_KM", "250"))    # llantas, frenos, mantenimiento (supuesto)
+    VELOCIDAD_AUTO_KMH = float(os.getenv("VELOCIDAD_AUTO_KMH", "18"))       # velocidad promedio urbana (supuesto)
+    VELOCIDAD_PEATON_KMH = 4.5
+    FACTOR_RUTA_URBANA = 1.3   # distancia real por calles ≈ 1,3 × línea recta
+
     # Chat IA: si hay API key se usa el modelo, si no, recomendador por reglas
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")

@@ -124,12 +124,46 @@ class Api {
 
   Future<void> marcarVisitado(int id) => post('/parqueaderos/$id/visitas');
 
-  Future<double?> calificar(int id, int calificacion, String comentario) async {
-    final d = await post('/parqueaderos/$id/resenas', {'calificacion': calificacion, 'comentario': comentario});
+  Future<double?> calificar(int id, int calificacion, String comentario, {int? seguridad}) async {
+    final d = await post('/parqueaderos/$id/resenas', {
+      'calificacion': calificacion,
+      'comentario': comentario,
+      if (seguridad != null) 'calificacion_seguridad': seguridad,
+    });
     return (d['calificacion_promedio'] as num?)?.toDouble();
   }
 
   Future<void> reportarResena(int resenaId, String motivo) => post('/resenas/$resenaId/reportar', {'motivo': motivo});
+
+  // ---------- Módulo de IA: recomendación multicriterio ----------
+  Future<Map<String, dynamic>> perfilesRecomendacion() async =>
+      Map<String, dynamic>.from(await get('/recomendaciones/perfiles'));
+
+  Future<Recomendacion> recomendar({
+    required double destinoLat,
+    required double destinoLon,
+    double? origenLat,
+    double? origenLon,
+    double horas = 2,
+    double? radio,
+    String? perfil,
+    Map<String, double>? pesos,
+  }) async {
+    final d = await post('/recomendaciones', {
+      'destino': {'lat': destinoLat, 'lon': destinoLon},
+      if (origenLat != null && origenLon != null) 'origen': {'lat': origenLat, 'lon': origenLon},
+      'horas': horas,
+      if (radio != null) 'radio': radio.round(),
+      if (perfil != null) 'perfil': perfil,
+      if (pesos != null) 'pesos': pesos,
+    });
+    return Recomendacion.fromJson(Map<String, dynamic>.from(d));
+  }
+
+  Future<Map<String, dynamic>> preferencias() async => Map<String, dynamic>.from(await get('/me/preferencias'));
+
+  Future<Map<String, dynamic>> guardarPreferencias(Map<String, double> pesos, {Map<String, double>? vehiculo}) async =>
+      Map<String, dynamic>.from(await put('/me/preferencias', {'pesos': pesos, if (vehiculo != null) 'vehiculo': vehiculo}));
 
   // ---------- Chat IA ----------
   Future<Map<String, dynamic>> chat(String mensaje, {double? lat, double? lon}) async =>

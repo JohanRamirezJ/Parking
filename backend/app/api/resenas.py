@@ -62,6 +62,16 @@ def crear_resena(pid: int):
     if not 1 <= cal <= 5:
         raise ApiError("La calificación debe estar entre 1 y 5", 400, "validacion")
     comentario = (d.get("comentario") or "").strip()[:1000] or None
+    seg = d.get("calificacion_seguridad")
+    if seg not in (None, ""):
+        try:
+            seg = int(seg)
+        except (TypeError, ValueError):
+            seg = 0
+        if not 1 <= seg <= 5:
+            raise ApiError("La calificación de seguridad debe estar entre 1 y 5", 400, "validacion")
+    else:
+        seg = None
 
     # Una reseña por usuario y parqueadero: si ya existe se actualiza.
     r = db.session.scalar(select(Resena).where(Resena.usuario_id == g.usuario.id, Resena.parqueadero_id == pid))
@@ -70,10 +80,12 @@ def crear_resena(pid: int):
         r = Resena(usuario_id=g.usuario.id, parqueadero=p)
         db.session.add(r)
     r.calificacion, r.comentario, r.estado = cal, comentario, "aprobada"
+    r.calificacion_seguridad = seg
     db.session.flush()
     p.recalcular_promedio()
     db.session.commit()
-    return jsonify({"resena": r.to_dict(), "calificacion_promedio": p.calificacion_promedio}), 201 if creada else 200
+    return jsonify({"resena": r.to_dict(), "calificacion_promedio": p.calificacion_promedio,
+                    "calificacion_seguridad": p.calificacion_seguridad}), 201 if creada else 200
 
 
 @api_bp.post("/resenas/<int:rid>/reportar")

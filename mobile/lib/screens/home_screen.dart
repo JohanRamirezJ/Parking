@@ -6,6 +6,7 @@ import 'chat_screen.dart';
 import 'lista_screen.dart';
 import 'mapa_screen.dart';
 import 'perfil_screen.dart';
+import 'recomendar_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -32,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final paginas = [
       MapaScreen(onVerLista: () => setState(() => _tab = 1)),
       const ListaScreen(),
+      RecomendarScreen(onIrAlMapa: () => setState(() => _tab = 0)),
       ChatScreen(onVerEnMapa: () => setState(() => _tab = 0)),
       const PerfilScreen(),
     ];
@@ -43,6 +45,8 @@ class _HomeScreenState extends State<HomeScreen> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Mapa'),
           NavigationDestination(icon: Icon(Icons.compare_arrows), label: 'Comparar'),
+          NavigationDestination(
+              icon: Icon(Icons.auto_awesome_outlined), selectedIcon: Icon(Icons.auto_awesome), label: 'Recomendar'),
           NavigationDestination(
               icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: 'Asistente'),
           NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Perfil'),

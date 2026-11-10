@@ -28,3 +28,4 @@ smartpark/
 | RF-10 Usuarios reportados | `admin/__init__.py` (`accion_reporte`) |
 | RF-11 Dashboard y exportación | `admin/__init__.py` (`dashboard`, `exportar`) |
 | RF-12 Chat IA | `services/chat.py`, `chat_screen.dart` |
+| Módulo de IA multicriterio (gasolina, rodamiento, tiempo, distancia, seguridad, precio) | `services/recomendador.py`, `api/recomendaciones.py`, `recomendar_screen.dart` · [docs/modelo-ia.md](docs/modelo-ia.md) |

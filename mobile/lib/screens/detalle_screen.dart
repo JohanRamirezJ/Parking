@@ -58,6 +58,7 @@ class _DetalleScreenState extends State<DetalleScreen> {
 
   Future<void> _calificar() async {
     var estrellas = 0;
+    var seguridad = 0;
     final comentario = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
@@ -65,6 +66,7 @@ class _DetalleScreenState extends State<DetalleScreen> {
         builder: (ctx, set) => AlertDialog(
           title: const Text('Califica este parqueadero'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Align(alignment: Alignment.centerLeft, child: Text('General')),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -73,6 +75,18 @@ class _DetalleScreenState extends State<DetalleScreen> {
                     tooltip: '$i estrellas',
                     icon: Icon(i <= estrellas ? Icons.star : Icons.star_border, color: Colors.amber.shade700, size: 32),
                     onPressed: () => set(() => estrellas = i),
+                  ),
+              ],
+            ),
+            const Align(alignment: Alignment.centerLeft, child: Text('Seguridad (opcional)')),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var i = 1; i <= 5; i++)
+                  IconButton(
+                    tooltip: 'Seguridad $i',
+                    icon: Icon(i <= seguridad ? Icons.shield : Icons.shield_outlined, color: Colors.teal, size: 28),
+                    onPressed: () => set(() => seguridad = i),
                   ),
               ],
             ),
@@ -92,7 +106,8 @@ class _DetalleScreenState extends State<DetalleScreen> {
     );
     if (ok != true) return;
     try {
-      await _api.calificar(widget.parqueaderoId, estrellas, comentario.text.trim());
+      await _api.calificar(widget.parqueaderoId, estrellas, comentario.text.trim(),
+          seguridad: seguridad == 0 ? null : seguridad);
       _snack('¡Gracias! Tu reseña fue publicada.');
       _cargar();
     } on ApiException catch (e) {

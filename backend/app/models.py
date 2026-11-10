@@ -32,6 +32,15 @@ class Usuario(db.Model):
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
     es_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     advertencias: Mapped[int] = mapped_column(Integer, default=0)
+    # Pesos y datos del vehículo para el módulo de IA (JSON)
+    preferencias: Mapped[str | None] = mapped_column(Text)
+
+    def get_preferencias(self) -> dict:
+        import json
+        try:
+            return json.loads(self.preferencias) if self.preferencias else {}
+        except ValueError:
+            return {}
 
     def set_password(self, password: str) -> None:
         self.password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
@@ -64,6 +73,7 @@ class Parqueadero(db.Model):
     capacidad_total: Mapped[int | None] = mapped_column(Integer)
     capacidad_disponible_estimada: Mapped[int | None] = mapped_column(Integer)
     calificacion_promedio: Mapped[float | None] = mapped_column(Float)
+    calificacion_seguridad: Mapped[float | None] = mapped_column(Float)
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
     fecha_registro: Mapped[datetime] = mapped_column(DateTime, default=ahora)
     imagen_url: Mapped[str | None] = mapped_column(String(255))
@@ -93,8 +103,11 @@ class Parqueadero(db.Model):
 
     def recalcular_promedio(self) -> None:
         """RF-06: actualizar el promedio al publicarse una reseña."""
-        valores = [r.calificacion for r in self.resenas if r.estado != "rechazada"]
+        validas = [r for r in self.resenas if r.estado != "rechazada"]
+        valores = [r.calificacion for r in validas]
         self.calificacion_promedio = round(sum(valores) / len(valores), 2) if valores else None
+        seg = [r.calificacion_seguridad for r in validas if r.calificacion_seguridad is not None]
+        self.calificacion_seguridad = round(sum(seg) / len(seg), 2) if seg else None
 
     def abierto_ahora(self, momento: time | None = None) -> bool | None:
         if not self.horario_apertura or not self.horario_cierre:
@@ -118,6 +131,7 @@ class Parqueadero(db.Model):
             "capacidad_total": self.capacidad_total,
             "capacidad_disponible_estimada": self.capacidad_disponible_estimada,
             "calificacion_promedio": self.calificacion_promedio,
+            "calificacion_seguridad": self.calificacion_seguridad,
             "total_resenas": self.total_resenas(),
             "imagen_url": self.imagen_url,
             # RF-05: None => la app muestra "tarifa no disponible"
@@ -157,6 +171,7 @@ class Resena(db.Model):
     usuario_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"), index=True)
     parqueadero_id: Mapped[int] = mapped_column(ForeignKey("parqueadero.id"), index=True)
     calificacion: Mapped[int] = mapped_column(Integer)
+    calificacion_seguridad: Mapped[int | None] = mapped_column(Integer)  # 1–5, opcional
     comentario: Mapped[str | None] = mapped_column(Text)
     fecha: Mapped[datetime] = mapped_column(DateTime, default=ahora)
     reportado: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -171,6 +186,7 @@ class Resena(db.Model):
             "parqueadero_id": self.parqueadero_id,
             "usuario": {"id": self.usuario.id, "nombre": self.usuario.nombre},
             "calificacion": self.calificacion,
+            "calificacion_seguridad": self.calificacion_seguridad,
             "comentario": self.comentario,
             "fecha": self.fecha.isoformat(),
         }
