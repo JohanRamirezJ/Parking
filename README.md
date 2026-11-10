@@ -16,6 +16,10 @@ smartpark/
 
 Requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/macOS) o Docker Engine + Compose (Linux).
 
+**En Windows:** abre Docker Desktop y haz doble clic en `iniciar-smartpark.bat`. Construye las imágenes, espera a que el backend responda y abre el panel en el navegador. Para detener: `detener-smartpark.bat`.
+
+**Por terminal:**
+
 ```bash
 cp .env.example .env            # en Windows: copy .env.example .env  (ajusta claves si quieres)
 docker compose up -d --build    # PostgreSQL 16 + backend (Ubuntu 24.04)
