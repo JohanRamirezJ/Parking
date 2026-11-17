@@ -2,48 +2,77 @@
 
 App para conductores: buscar destino, ver parqueaderos en el mapa, comparar tarifas, calificar y preguntar al asistente.
 
-## Primer arranque
+## Ejecutar en un teléfono Android sin USB (misma Wi-Fi)
 
-Esta carpeta trae el código (`lib/`, `test/`, `pubspec.yaml`) pero no las carpetas de plataforma. Genéralas una vez:
+El teléfono y el computador deben estar conectados a la misma Wi-Fi. El computador debe permanecer encendido y ejecutar el backend; la base SQLite y la API siguen estando en él. Esta configuración es para desarrollo/pruebas en una red de confianza, no para publicar la API por Internet.
 
-```bash
-cd mobile
-flutter create . --org co.smartpark --project-name smartpark --platforms=android,ios
-flutter pub get
-```
+1. Prepara el backend una vez, desde PowerShell:
 
-### Permisos (obligatorio después de `flutter create`)
+   ```powershell
+   cd backend
+   python -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   ```
 
-**Android** — `android/app/src/main/AndroidManifest.xml`, dentro de `<manifest>`:
+2. Averigua las direcciones IPv4 del computador y del teléfono. En Windows:
 
-```xml
-<uses-permission android:name="android.permission.INTERNET"/>
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-```
+   ```powershell
+   Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" }
+   ```
 
-y en la etiqueta `<application ...>` agrega `android:usesCleartextTraffic="true"` (solo desarrollo, para llamar al backend por `http://`).
+   En Android, consulta los detalles de la red Wi-Fi en Ajustes. Ambos dispositivos deben tener direcciones de la misma red. Sustituye `192.168.0.10` y `192.168.0.5` en los ejemplos por la IP del computador y la IP actual del teléfono.
 
-**iOS** — `ios/Runner/Info.plist`:
+3. En PowerShell **como administrador**, permite solo al teléfono acceder a la API y al servidor temporal de descarga del APK:
 
-```xml
-<key>NSLocationWhenInUseUsageDescription</key>
-<string>SmartPark usa tu ubicación para mostrarte parqueaderos cercanos.</string>
-```
+   ```powershell
+   New-NetFirewallRule -DisplayName "SmartPark API telefono" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5000 -RemoteAddress 192.168.0.5 -Profile Any
+   New-NetFirewallRule -DisplayName "SmartPark APK telefono" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8000 -RemoteAddress 192.168.0.5 -Profile Any
+   ```
 
-## Ejecutar
+   Limita las reglas a la IP del teléfono y elimínalas al terminar las pruebas:
 
-Con el backend corriendo (ver `../backend/README.md`):
+   ```powershell
+   Remove-NetFirewallRule -DisplayName "SmartPark API telefono"
+   Remove-NetFirewallRule -DisplayName "SmartPark APK telefono"
+   ```
 
-```bash
-# Emulador Android (10.0.2.2 = localhost del PC) — valor por defecto
-flutter run
+4. Arranca el backend dejando abierta la ventana de consola:
 
-# Celular físico en la misma red Wi-Fi: usa la IP del PC
-flutter run --dart-define=API_URL=http://192.168.1.50:5000
-```
+   ```powershell
+   .\iniciar-smartpark-wifi.bat
+   ```
 
-Usuario de prueba (si cargaste los datos demo): `demo1@smartpark.co` / `demo12345`.
+5. Compila el APK de depuración para el teléfono (Android ARM64), reemplazando la IP por la del computador:
+
+   ```powershell
+   cd mobile
+   flutter build apk --debug --target-platform android-arm64 --split-per-abi --dart-define=API_URL=http://192.168.0.10:5000
+   ```
+
+6. En otra terminal, publica temporalmente el APK solo en la red local:
+
+   ```powershell
+   cd build\app\outputs\flutter-apk
+   python -m http.server 8000 --bind 0.0.0.0
+   ```
+
+   En el teléfono, abre `http://192.168.0.10:8000/app-arm64-v8a-debug.apk` en el navegador, descarga e instala el archivo. Android puede pedir autorización para instalar aplicaciones desde ese navegador. Después de instalarlo, detén el servidor de archivos con `Ctrl+C`; la app seguirá usando el backend en `http://192.168.0.10:5000`.
+
+Puedes arrancar el backend con doble clic en `iniciar-smartpark-wifi.bat`. Si cambia la IP del computador, recompila el APK con la nueva dirección. Si cambia la IP del teléfono, actualiza las reglas del firewall. La excepción HTTP sin cifrar se habilita solo en compilaciones de depuración; para producción hace falta HTTPS.
+
+El backend usa SQLite local y no necesita Docker ni una clave de OpenAI para arrancar. Sin `OPENAI_API_KEY`, el chat responde mediante la plantilla/reglas del proyecto. Usuario demo: `demo1@smartpark.co` / `demo12345`.
+
+### Cambiar de red Wi-Fi
+
+Conecta el computador y el teléfono a la nueva red y ejecuta [`preparar-smartpark-wifi.bat`](../preparar-smartpark-wifi.bat) desde la raíz del proyecto. El asistente detecta la IP del computador, pide la IP Wi-Fi del teléfono, compila el APK con la dirección nueva, actualiza las reglas del firewall limitándolas a ese teléfono y a esa IP del computador, y deja activo el servidor temporal de descarga. Puede solicitar autorización de administrador para configurar el firewall.
+
+Al terminar, ejecuta [`iniciar-smartpark-wifi.bat`](../iniciar-smartpark-wifi.bat) y abre desde el teléfono la URL que imprimió el asistente. Si la red Wi-Fi bloquea la comunicación entre dispositivos (aislamiento de clientes), usa un hotspot personal. Vuelve a ejecutar el asistente si cambia la IP del computador o del teléfono.
+
+### Ejecutar con USB (alternativa de desarrollo)
+
+Conecta el teléfono con **Depuración USB** activada, acepta la autorización RSA y usa `adb reverse tcp:5000 tcp:5000`. Luego ejecuta `flutter run --dart-define=API_URL=http://127.0.0.1:5000`.
+
+Para iOS se necesita generar la plataforma en macOS, añadir el permiso de ubicación a `ios/Runner/Info.plist` y compilar desde Xcode.
 
 ## Estructura
 
@@ -75,5 +104,3 @@ Flujo de 3 pasos (RNF-03): escribir destino → ver mapa/lista comparativa → a
 flutter test
 flutter analyze
 ```
-
-> Nota: el código se escribió sin poder compilarlo en el entorno donde se generó (no había SDK de Flutter disponible). Corre `flutter analyze` al primer arranque y corrige cualquier detalle menor de versión de paquetes.

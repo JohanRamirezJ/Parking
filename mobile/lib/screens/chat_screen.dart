@@ -20,15 +20,19 @@ class _Mensaje {
   final bool deUsuario;
   final String texto;
   final Parqueadero? recomendado;
+  final List<Parqueadero> alternativas;
   final Map<String, dynamic>? destino;
-  _Mensaje(this.deUsuario, this.texto, {this.recomendado, this.destino});
+  _Mensaje(this.deUsuario, this.texto,
+      {this.recomendado, this.alternativas = const [], this.destino});
 }
 
 class _ChatScreenState extends State<ChatScreen> {
   final _texto = TextEditingController();
   final _scroll = ScrollController();
   final List<_Mensaje> _mensajes = [
-    _Mensaje(false, '¡Hola! Cuéntame a dónde vas y qué prefieres. Por ejemplo: '
+    _Mensaje(
+        false,
+        '¡Hola! Cuéntame a dónde vas y qué prefieres. Por ejemplo: '
         '"parqueadero barato cerca del Hospital San Ignacio" o "el mejor calificado en Chapinero por menos de 6 mil".'),
   ];
   bool _enviando = false;
@@ -51,13 +55,24 @@ class _ChatScreenState extends State<ChatScreen> {
     final b = context.read<Busqueda>();
     try {
       final r = await context.read<Api>().chat(msg,
-          lat: b.tieneReferencia ? b.lat : null, lon: b.tieneReferencia ? b.lon : null);
+          lat: b.tieneReferencia ? b.lat : null,
+          lon: b.tieneReferencia ? b.lon : null);
       final rec = r['parqueadero_recomendado'];
-      setState(() => _mensajes.add(_Mensaje(false, (r['respuesta'] as String).replaceAll('**', ''),
-          recomendado: rec == null ? null : Parqueadero.fromJson(Map<String, dynamic>.from(rec)),
-          destino: r['destino'] == null ? null : Map<String, dynamic>.from(r['destino']))));
+      final alternativas = (r['alternativas'] as List)
+          .map((x) => Parqueadero.fromJson(Map<String, dynamic>.from(x as Map)))
+          .toList();
+      setState(() => _mensajes.add(_Mensaje(
+          false, (r['respuesta'] as String).replaceAll('**', ''),
+          recomendado: rec == null
+              ? null
+              : Parqueadero.fromJson(Map<String, dynamic>.from(rec)),
+          alternativas: alternativas,
+          destino: r['destino'] == null
+              ? null
+              : Map<String, dynamic>.from(r['destino']))));
     } on ApiException catch (e) {
-      setState(() => _mensajes.add(_Mensaje(false, 'No pude responder: ${e.mensaje}')));
+      setState(() =>
+          _mensajes.add(_Mensaje(false, 'No pude responder: ${e.mensaje}')));
     } finally {
       if (mounted) setState(() => _enviando = false);
       _bajar();
@@ -67,7 +82,8 @@ class _ChatScreenState extends State<ChatScreen> {
   void _bajar() => WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scroll.hasClients) {
           _scroll.animateTo(_scroll.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut);
         }
       });
 
@@ -86,41 +102,103 @@ class _ChatScreenState extends State<ChatScreen> {
               if (i == _mensajes.length) {
                 return const Align(
                     alignment: Alignment.centerLeft,
-                    child: Padding(padding: EdgeInsets.all(12), child: Text('Buscando opciones…')));
+                    child: Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Text('Buscando opciones…')));
               }
               final m = _mensajes[i];
               return Align(
-                alignment: m.deUsuario ? Alignment.centerRight : Alignment.centerLeft,
+                alignment:
+                    m.deUsuario ? Alignment.centerRight : Alignment.centerLeft,
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
+                  constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.82),
                   child: Card(
-                    color: m.deUsuario ? t.colorScheme.primary : t.colorScheme.surfaceContainerHighest,
+                    color: m.deUsuario
+                        ? t.colorScheme.primary
+                        : t.colorScheme.surfaceContainerHighest,
                     child: Padding(
                       padding: const EdgeInsets.all(12),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(m.texto, style: TextStyle(color: m.deUsuario ? t.colorScheme.onPrimary : null)),
-                        if (m.recomendado != null) ...[
-                          const SizedBox(height: 8),
-                          Wrap(spacing: 8, children: [
-                            ActionChip(
-                              avatar: const Icon(Icons.info_outline, size: 18),
-                              label: Text('${m.recomendado!.nombre} · ${tarifa(m.recomendado!.tarifaHora)}'),
-                              onPressed: () => Navigator.push(context,
-                                  MaterialPageRoute(builder: (_) => DetalleScreen(parqueaderoId: m.recomendado!.id))),
-                            ),
-                            if (m.destino != null)
-                              ActionChip(
-                                avatar: const Icon(Icons.map_outlined, size: 18),
-                                label: const Text('Ver en el mapa'),
-                                onPressed: () {
-                                  context.read<Busqueda>().fijarDestino(Destino(m.destino!['nombre'],
-                                      (m.destino!['latitud'] as num).toDouble(), (m.destino!['longitud'] as num).toDouble()));
-                                  widget.onVerEnMapa();
-                                },
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(m.texto,
+                                style: TextStyle(
+                                    color: m.deUsuario
+                                        ? t.colorScheme.onPrimary
+                                        : null)),
+                            if (m.recomendado != null) ...[
+                              const SizedBox(height: 8),
+                              Wrap(spacing: 8, children: [
+                                if (m.recomendado!.fuente == 'openstreetmap')
+                                  Chip(
+                                    avatar: const Icon(Icons.local_parking,
+                                        size: 18),
+                                    label: Text(
+                                        '${m.recomendado!.nombre} · ${tarifa(m.recomendado!.tarifaHora)}'),
+                                  )
+                                else
+                                  ActionChip(
+                                    avatar: const Icon(Icons.info_outline,
+                                        size: 18),
+                                    label: Text(
+                                        '${m.recomendado!.nombre} · ${tarifa(m.recomendado!.tarifaHora)}'),
+                                    onPressed: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (_) => DetalleScreen(
+                                                parqueaderoId:
+                                                    m.recomendado!.id))),
+                                  ),
+                                if (m.destino != null &&
+                                    m.recomendado!.fuente != 'openstreetmap')
+                                  ActionChip(
+                                    avatar: const Icon(Icons.map_outlined,
+                                        size: 18),
+                                    label: const Text('Ver en el mapa'),
+                                    onPressed: () {
+                                      context.read<Busqueda>().fijarDestino(
+                                          Destino(
+                                              m.destino!['nombre'],
+                                              (m.destino!['latitud'] as num)
+                                                  .toDouble(),
+                                              (m.destino!['longitud'] as num)
+                                                  .toDouble()));
+                                      widget.onVerEnMapa();
+                                    },
+                                  ),
+                              ]),
+                            ],
+                            if (m.alternativas.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              const Text('Otras opciones:'),
+                              Wrap(
+                                spacing: 8,
+                                children: [
+                                  for (final p in m.alternativas)
+                                    if (p.fuente == 'openstreetmap')
+                                      Chip(
+                                        avatar: const Icon(Icons.local_parking,
+                                            size: 18),
+                                        label: Text(
+                                            '${p.nombre} · ${tarifa(p.tarifaHora)}'),
+                                      )
+                                    else
+                                      ActionChip(
+                                        avatar: const Icon(Icons.info_outline,
+                                            size: 18),
+                                        label: Text(
+                                            '${p.nombre} · ${tarifa(p.tarifaHora)}'),
+                                        onPressed: () => Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                                builder: (_) => DetalleScreen(
+                                                    parqueaderoId: p.id))),
+                                      ),
+                                ],
                               ),
+                            ],
                           ]),
-                        ],
-                      ]),
                     ),
                   ),
                 ),
@@ -136,7 +214,10 @@ class _ChatScreenState extends State<ChatScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               children: [
                 for (final s in _sugerencias)
-                  Padding(padding: const EdgeInsets.only(right: 8), child: ActionChip(label: Text(s), onPressed: () => _enviar(s))),
+                  Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ActionChip(
+                          label: Text(s), onPressed: () => _enviar(s))),
               ],
             ),
           ),
@@ -151,11 +232,14 @@ class _ChatScreenState extends State<ChatScreen> {
                   maxLength: 500,
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => _enviar(),
-                  decoration: const InputDecoration(hintText: 'Escribe tu consulta…', counterText: ''),
+                  decoration: const InputDecoration(
+                      hintText: 'Escribe tu consulta…', counterText: ''),
                 ),
               ),
               const SizedBox(width: 8),
-              IconButton.filled(onPressed: _enviando ? null : _enviar, icon: const Icon(Icons.send)),
+              IconButton.filled(
+                  onPressed: _enviando ? null : _enviar,
+                  icon: const Icon(Icons.send)),
             ]),
           ),
         ),

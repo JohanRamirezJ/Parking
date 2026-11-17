@@ -12,7 +12,8 @@ class ApiException implements Exception {
   final String codigo;
   final String mensaje;
   final Map<String, dynamic> detalles;
-  ApiException(this.status, this.codigo, this.mensaje, [this.detalles = const {}]);
+  ApiException(this.status, this.codigo, this.mensaje,
+      [this.detalles = const {}]);
   @override
   String toString() => mensaje;
 }
@@ -27,6 +28,7 @@ class Api {
 
   final http.Client _http = http.Client();
   static const _timeout = Duration(seconds: 10);
+  static const _chatTimeout = Duration(seconds: 20);
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
@@ -42,32 +44,47 @@ class Api {
     return params.isEmpty ? base : base.replace(queryParameters: params);
   }
 
-  Future<dynamic> _enviar(Future<http.Response> Function() req) async {
+  Future<dynamic> _enviar(Future<http.Response> Function() req,
+      {Duration timeout = _timeout}) async {
     http.Response r;
     try {
-      r = await req().timeout(_timeout);
+      r = await req().timeout(timeout);
     } on TimeoutException {
-      throw ApiException(0, 'timeout', 'El servidor tardó demasiado en responder. Intenta de nuevo.');
+      throw ApiException(0, 'timeout',
+          'El servidor tardó demasiado en responder. Intenta de nuevo.');
     } on SocketException {
-      throw ApiException(0, 'sin_conexion', 'No hay conexión con el servidor. Revisa tu internet.');
+      throw ApiException(0, 'sin_conexion',
+          'No hay conexión con el servidor. Revisa tu internet.');
     } on http.ClientException {
-      throw ApiException(0, 'sin_conexion', 'No hay conexión con el servidor. Revisa tu internet.');
+      throw ApiException(0, 'sin_conexion',
+          'No hay conexión con el servidor. Revisa tu internet.');
     }
     final cuerpo = r.body.isEmpty ? null : jsonDecode(utf8.decode(r.bodyBytes));
     if (r.statusCode >= 200 && r.statusCode < 300) return cuerpo;
 
-    final err = (cuerpo is Map && cuerpo['error'] is Map) ? cuerpo['error'] as Map : const {};
-    final ex = ApiException(r.statusCode, err['codigo'] ?? 'error', err['mensaje'] ?? 'Error inesperado (${r.statusCode})',
+    final err = (cuerpo is Map && cuerpo['error'] is Map)
+        ? cuerpo['error'] as Map
+        : const {};
+    final ex = ApiException(
+        r.statusCode,
+        err['codigo'] ?? 'error',
+        err['mensaje'] ?? 'Error inesperado (${r.statusCode})',
         Map<String, dynamic>.from(err['detalles'] ?? {}));
     if (r.statusCode == 401 && token != null) alExpirarSesion?.call();
     throw ex;
   }
 
-  Future<dynamic> get(String ruta, [Map<String, dynamic>? q]) => _enviar(() => _http.get(_uri(ruta, q), headers: _headers));
-  Future<dynamic> post(String ruta, [Object? body]) =>
-      _enviar(() => _http.post(_uri(ruta), headers: _headers, body: jsonEncode(body ?? {})));
-  Future<dynamic> put(String ruta, [Object? body]) =>
-      _enviar(() => _http.put(_uri(ruta), headers: _headers, body: jsonEncode(body ?? {})));
+  Future<dynamic> get(String ruta, [Map<String, dynamic>? q]) =>
+      _enviar(() => _http.get(_uri(ruta, q), headers: _headers));
+  Future<dynamic> _post(String ruta, Object? body,
+          {Duration timeout = _timeout}) =>
+      _enviar(
+          () => _http.post(_uri(ruta),
+              headers: _headers, body: jsonEncode(body ?? {})),
+          timeout: timeout);
+  Future<dynamic> post(String ruta, [Object? body]) => _post(ruta, body);
+  Future<dynamic> put(String ruta, [Object? body]) => _enviar(() =>
+      _http.put(_uri(ruta), headers: _headers, body: jsonEncode(body ?? {})));
 
   // ---------- Auth / perfil ----------
   Future<(String, Usuario)> login(String email, String password) async {
@@ -75,19 +92,24 @@ class Api {
     return (d['token'] as String, Usuario.fromJson(d['usuario']));
   }
 
-  Future<(String, Usuario)> registro(String nombre, String email, String password) async {
-    final d = await post('/auth/registro', {'nombre': nombre, 'email': email, 'password': password});
+  Future<(String, Usuario)> registro(
+      String nombre, String email, String password) async {
+    final d = await post('/auth/registro',
+        {'nombre': nombre, 'email': email, 'password': password});
     return (d['token'] as String, Usuario.fromJson(d['usuario']));
   }
 
   Future<Usuario> perfil() async => Usuario.fromJson(await get('/me'));
-  Future<Usuario> editarPerfil(Map<String, dynamic> cambios) async => Usuario.fromJson(await put('/me', cambios));
-  Future<List<dynamic>> notificaciones() async => await get('/me/notificaciones') as List<dynamic>;
+  Future<Usuario> editarPerfil(Map<String, dynamic> cambios) async =>
+      Usuario.fromJson(await put('/me', cambios));
+  Future<List<dynamic>> notificaciones() async =>
+      await get('/me/notificaciones') as List<dynamic>;
 
   // ---------- Búsqueda ----------
   Future<Destino> geocodificar(String q) async {
     final d = await get('/geocodificar', {'q': q});
-    return Destino(d['nombre'], (d['latitud'] as num).toDouble(), (d['longitud'] as num).toDouble());
+    return Destino(d['nombre'], (d['latitud'] as num).toDouble(),
+        (d['longitud'] as num).toDouble());
   }
 
   Future<ResultadoBusqueda> buscar({
@@ -114,7 +136,8 @@ class Api {
   }
 
   Future<Parqueadero> parqueadero(int id, {double? lat, double? lon}) async =>
-      Parqueadero.fromJson(await get('/parqueaderos/$id', {'lat': lat, 'lon': lon}));
+      Parqueadero.fromJson(
+          await get('/parqueaderos/$id', {'lat': lat, 'lon': lon}));
 
   // ---------- Reseñas ----------
   Future<List<Resena>> resenas(int id) async {
@@ -124,7 +147,8 @@ class Api {
 
   Future<void> marcarVisitado(int id) => post('/parqueaderos/$id/visitas');
 
-  Future<double?> calificar(int id, int calificacion, String comentario, {int? seguridad}) async {
+  Future<double?> calificar(int id, int calificacion, String comentario,
+      {int? seguridad}) async {
     final d = await post('/parqueaderos/$id/resenas', {
       'calificacion': calificacion,
       'comentario': comentario,
@@ -133,7 +157,8 @@ class Api {
     return (d['calificacion_promedio'] as num?)?.toDouble();
   }
 
-  Future<void> reportarResena(int resenaId, String motivo) => post('/resenas/$resenaId/reportar', {'motivo': motivo});
+  Future<void> reportarResena(int resenaId, String motivo) =>
+      post('/resenas/$resenaId/reportar', {'motivo': motivo});
 
   // ---------- Módulo de IA: recomendación multicriterio ----------
   Future<Map<String, dynamic>> perfilesRecomendacion() async =>
@@ -151,7 +176,8 @@ class Api {
   }) async {
     final d = await post('/recomendaciones', {
       'destino': {'lat': destinoLat, 'lon': destinoLon},
-      if (origenLat != null && origenLon != null) 'origen': {'lat': origenLat, 'lon': origenLon},
+      if (origenLat != null && origenLon != null)
+        'origen': {'lat': origenLat, 'lon': origenLon},
       'horas': horas,
       if (radio != null) 'radio': radio.round(),
       if (perfil != null) 'perfil': perfil,
@@ -160,14 +186,20 @@ class Api {
     return Recomendacion.fromJson(Map<String, dynamic>.from(d));
   }
 
-  Future<Map<String, dynamic>> preferencias() async => Map<String, dynamic>.from(await get('/me/preferencias'));
+  Future<Map<String, dynamic>> preferencias() async =>
+      Map<String, dynamic>.from(await get('/me/preferencias'));
 
-  Future<Map<String, dynamic>> guardarPreferencias(Map<String, double> pesos, {Map<String, double>? vehiculo}) async =>
-      Map<String, dynamic>.from(await put('/me/preferencias', {'pesos': pesos, if (vehiculo != null) 'vehiculo': vehiculo}));
+  Future<Map<String, dynamic>> guardarPreferencias(Map<String, double> pesos,
+          {Map<String, double>? vehiculo}) async =>
+      Map<String, dynamic>.from(await put('/me/preferencias',
+          {'pesos': pesos, if (vehiculo != null) 'vehiculo': vehiculo}));
 
   // ---------- Chat IA ----------
-  Future<Map<String, dynamic>> chat(String mensaje, {double? lat, double? lon}) async =>
-      Map<String, dynamic>.from(await post('/chat', {'mensaje': mensaje, 'lat': lat, 'lon': lon}));
+  Future<Map<String, dynamic>> chat(String mensaje,
+          {double? lat, double? lon}) async =>
+      Map<String, dynamic>.from(await _post(
+          '/chat', {'mensaje': mensaje, 'lat': lat, 'lon': lon},
+          timeout: _chatTimeout));
 }
 
 class ResultadoBusqueda {

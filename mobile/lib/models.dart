@@ -32,6 +32,7 @@ class Parqueadero {
   final double? tarifaHora;
   final double? tarifaDia;
   final int? distanciaM;
+  final String? fuente;
 
   Parqueadero({
     required this.id,
@@ -49,6 +50,7 @@ class Parqueadero {
     this.tarifaHora,
     this.tarifaDia,
     this.distanciaM,
+    this.fuente,
   });
 
   static double? _d(dynamic v) => v == null ? null : (v as num).toDouble();
@@ -69,6 +71,7 @@ class Parqueadero {
         tarifaHora: _d(j['tarifa_hora']),
         tarifaDia: _d(j['tarifa_dia']),
         distanciaM: (j['distancia_m'] as num?)?.round(),
+        fuente: j['fuente'],
       );
 
   String get horario {

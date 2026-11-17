@@ -27,8 +27,9 @@ def chat():
 
     r = chat_srv.responder(consulta, lat, lon, g.usuario.get_preferencias())
     rec = r.get("parqueadero_recomendado")
+    parqueadero_id = rec["id"] if rec and rec.get("fuente") != "openstreetmap" else None
     db.session.add(ConsultaIA(usuario_id=g.usuario.id, consulta=consulta, respuesta=r["respuesta"],
-                              parqueadero_recomendado_id=rec["id"] if rec else None,
+                              parqueadero_recomendado_id=parqueadero_id,
                               tiempo_respuesta_ms=r["tiempo_respuesta_ms"]))
     db.session.commit()
     return jsonify(r)

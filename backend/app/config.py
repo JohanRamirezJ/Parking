@@ -36,9 +36,14 @@ class Config:
     # Chat IA: si hay API key se usa el modelo, si no, recomendador por reglas
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
     # Geocodificación de destinos (HU 5). Nominatim/OSM no requiere API key.
     GEOCODER_URL = os.getenv("GEOCODER_URL", "https://nominatim.openstreetmap.org/search")
+    # Búsqueda en vivo de parqueaderos (Overpass/OSM, sin API key).
+    OVERPASS_URL = os.getenv("OVERPASS_URL", "https://overpass-api.de/api/interpreter")
+    OVERPASS_TIMEOUT_SECONDS = float(os.getenv("OVERPASS_TIMEOUT_SECONDS", "6"))
 
 
 class TestConfig(Config):

@@ -1,7 +1,33 @@
 """Pruebas funcionales de la API, trazadas a las historias de usuario / RF del Documento_PM."""
 from tests.conftest import registrar
 
+from app.extensions import db
+from app.models import ConsultaIA, Parqueadero, Tarifa
+from app.services.geo import haversine_m
+from app.services.openstreetmap import CandidatoOSM, ErrorConsultaOSM
+
 LAT, LON = 4.6283, -74.0645
+
+
+def _candidatos_osm():
+    datos = [
+        ("Cercano caro", 101, 4.6290, -74.0640, 9000),
+        ("Medio barato", 102, 4.6320, -74.0650, 3500),
+        ("Sin tarifa", 103, 4.6275, -74.0660, None),
+    ]
+    candidatos = []
+    for nombre, osm_id, lat, lon, tarifa in datos:
+        p = Parqueadero(id=-(osm_id * 4 + 1), nombre=nombre, direccion="Calle 1", latitud=lat, longitud=lon)
+        if tarifa is not None:
+            p.tarifas.append(Tarifa(tipo="hora", unidad="hora", valor=tarifa, vigente=True))
+        candidatos.append(CandidatoOSM(p, haversine_m(LAT, LON, lat, lon),
+                                       f"https://www.openstreetmap.org/node/{osm_id}"))
+    return candidatos
+
+
+def _usar_candidatos_osm(monkeypatch, candidatos=None):
+    resultados = _candidatos_osm() if candidatos is None else candidatos
+    monkeypatch.setattr("app.services.chat.buscar_cercanos_osm", lambda lat, lon, radio: resultados)
 
 
 # ---- HU 1 / RF-01 ----
@@ -126,25 +152,146 @@ def test_calificacion_fuera_de_rango(client, auth):
 
 
 # ---- RF-12 chat ----
-def test_chat_recomienda_el_mas_barato_cerca_de_destino(client, auth):
+def test_chat_no_consulta_osm_para_mensajes_ajenos_a_parqueaderos(client, auth, monkeypatch):
+    def no_deberia_consultar(*_):
+        raise AssertionError("No debe consultar OSM para un saludo")
+
+    monkeypatch.setattr("app.services.chat.buscar_cercanos_osm", no_deberia_consultar)
+    d = client.post("/api/chat", json={"mensaje": "hola"}, headers=auth).get_json()
+    assert d["parqueadero_recomendado"] is None
+    assert "puedo buscar parqueaderos" in d["respuesta"].lower()
+
+
+def test_chat_recomienda_el_mas_barato_cerca_de_destino(client, auth, monkeypatch):
+    _usar_candidatos_osm(monkeypatch)
     r = client.post("/api/chat", json={"mensaje": "parqueadero barato cerca del hospital San Ignacio"}, headers=auth)
     d = r.get_json()
     assert r.status_code == 200
     assert d["parqueadero_recomendado"]["nombre"] == "Medio barato"
     assert "Medio barato" in d["respuesta"]
+    assert d["fuente_datos"] == "openstreetmap"
+    assert "openstreetmap.org" in d["parqueadero_recomendado"]["osm_url"]
 
 
-def test_chat_sin_opciones_sugiere_ampliar(client, auth):
+def test_chat_no_afirma_presupuesto_si_osm_no_reporta_tarifa(client, auth, monkeypatch):
+    _usar_candidatos_osm(monkeypatch)
     d = client.post("/api/chat", json={"mensaje": "cerca del hospital San Ignacio por menos de 1000"},
                     headers=auth).get_json()
-    assert d["parqueadero_recomendado"] is None
-    assert "ampliar" in d["respuesta"] or "presupuesto" in d["respuesta"]
+    assert d["parqueadero_recomendado"]["nombre"] == "Sin tarifa"
+    assert "no se puede verificar" in d["respuesta"].lower()
+
+
+def test_chat_expone_aviso_si_falla_el_modelo(client, auth, monkeypatch):
+    _usar_candidatos_osm(monkeypatch)
+    aviso = "Aviso de IA: Gemini está saturado. Se muestra una respuesta de respaldo."
+    monkeypatch.setattr("app.services.chat._respuesta_llm", lambda *_: (None, aviso))
+    d = client.post("/api/chat",
+                    json={"mensaje": "parqueadero barato cerca del hospital San Ignacio"},
+                    headers=auth).get_json()
+    assert d["aviso_ia"] == aviso
+    assert aviso in d["respuesta"]
+    assert d["fuente_datos"] == "directorio_local"
+    assert d["parqueadero_recomendado"]["fuente"] == "directorio_local"
 
 
 def test_chat_interpreta_presupuesto():
     from app.services.chat import interpretar
     i = interpretar("algo económico en Chapinero hasta 5 mil")
     assert i["orden"] == "tarifa" and i["tarifa_max"] == 5000 and i["destino_texto"] == "chapinero"
+
+
+def test_chat_usa_osm_sin_guardar_candidatos_y_no_inventa_tarifa(client, auth, app, monkeypatch):
+    candidato = _candidatos_osm()[2]
+    _usar_candidatos_osm(monkeypatch, [candidato])
+    with app.app_context():
+        parqueaderos_antes = db.session.query(Parqueadero).count()
+
+    r = client.post("/api/chat",
+                    json={"mensaje": "parqueadero barato cerca del hospital San Ignacio por menos de 5 mil"},
+                    headers=auth)
+    d = r.get_json()
+
+    assert r.status_code == 200
+    assert d["parqueadero_recomendado"]["nombre"] == "Sin tarifa"
+    assert d["parqueadero_recomendado"]["tarifa_hora"] is None
+    assert d["recomendacion"]["resultados"][0]["criterios"]["precio"]["valor"] is None
+    assert d["recomendacion"]["resultados"][0]["costo_total_estimado"] is None
+    assert "no se puede verificar" in d["respuesta"].lower()
+    with app.app_context():
+        assert db.session.query(Parqueadero).count() == parqueaderos_antes
+        consulta = db.session.query(ConsultaIA).one()
+        assert consulta.parqueadero_recomendado_id is None
+
+
+def test_chat_near_me_uses_phone_coordinates():
+    from app.services.chat import interpretar
+    assert interpretar("parqueaderos cerca de mí")["destino_texto"] is None
+
+
+def test_chat_abierto_solo_recomienda_horarios_verificados(client, auth, app, monkeypatch):
+    with app.app_context():
+        sin_horario = Parqueadero(nombre="Sin horario", direccion="Calle 1", latitud=4.62831,
+                                  longitud=-74.06451)
+        sin_horario.tarifas.append(Tarifa(tipo="hora", unidad="hora", valor=1000, vigente=True))
+        db.session.add(sin_horario)
+        db.session.commit()
+        sin_horario_id = sin_horario.id
+    _usar_candidatos_osm(monkeypatch, _candidatos_osm()[:1])
+    d = client.post("/api/chat", json={"mensaje": "parqueadero abierto ahora cerca del hospital San Ignacio"},
+                    headers=auth).get_json()
+    assert d["fuente_datos"] == "directorio_local"
+    assert d["parqueadero_recomendado"]["id"] != sin_horario_id
+    assert d["parqueadero_recomendado"]["abierto_ahora"] is True
+
+
+def test_chat_muestra_error_si_overpass_no_responde(client, auth, monkeypatch):
+    def falla(lat, lon, radio):
+        raise ErrorConsultaOSM("Alerta de búsqueda: Overpass está saturado.")
+
+    monkeypatch.setattr("app.services.chat.buscar_cercanos_osm", falla)
+    d = client.post("/api/chat", json={"mensaje": "cerca del hospital San Ignacio"}, headers=auth).get_json()
+    assert d["aviso_osm"] == "Alerta de búsqueda: Overpass está saturado."
+    assert d["aviso_osm"] in d["respuesta"]
+    assert d["fuente_datos"] == "directorio_local"
+    assert d["parqueadero_recomendado"]["fuente"] == "directorio_local"
+
+
+def test_chat_redacta_con_ia_con_opciones_locales_si_overpass_falla(client, auth, monkeypatch):
+    llamada = {}
+
+    def falla(lat, lon, radio):
+        raise ErrorConsultaOSM("Alerta de búsqueda: Overpass está saturado.")
+
+    def redactar(consulta, destino, recomendacion):
+        llamada["consulta"] = consulta
+        llamada["destino"] = destino
+        llamada["opciones"] = recomendacion["resultados"]
+        return "Gemini recomienda la mejor opción guardada.", None
+
+    monkeypatch.setattr("app.services.chat.buscar_cercanos_osm", falla)
+    monkeypatch.setattr("app.services.chat._respuesta_llm", redactar)
+    d = client.post("/api/chat", json={"mensaje": "parqueadero cerca del hospital San Ignacio"},
+                    headers=auth).get_json()
+
+    assert llamada["consulta"] == "parqueadero cerca del hospital San Ignacio"
+    assert llamada["opciones"]
+    assert d["fuente_datos"] == "directorio_local"
+    assert d["parqueadero_recomendado"]["fuente"] == "directorio_local"
+    assert "Gemini recomienda" in d["respuesta"]
+    assert "Overpass está saturado" in d["respuesta"]
+
+
+def test_chat_fallback_local_respeta_presupuesto(client, auth, monkeypatch):
+    def falla(lat, lon, radio):
+        raise ErrorConsultaOSM("Alerta de búsqueda: Overpass está saturado.")
+
+    monkeypatch.setattr("app.services.chat.buscar_cercanos_osm", falla)
+    d = client.post("/api/chat",
+                    json={"mensaje": "parqueadero cerca del hospital San Ignacio por menos de 1000"},
+                    headers=auth).get_json()
+    assert d["fuente_datos"] == "directorio_local"
+    assert d["parqueadero_recomendado"] is None
+    assert "No encontré parqueaderos guardados con tarifa de hasta $1.000" in d["respuesta"]
 
 
 def test_geocodificar_catalogo_local(client):

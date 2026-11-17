@@ -24,7 +24,15 @@ class _MapaScreenState extends State<MapaScreen> {
   bool _buscandoDestino = false;
   double? _ultimoLat, _ultimoLon;
 
-  double _zoomParaRadio(double r) => r <= 300 ? 16.5 : r <= 700 ? 15.5 : r <= 1500 ? 14.5 : r <= 3000 ? 13.5 : 12.5;
+  double _zoomParaRadio(double r) => r <= 300
+      ? 16.5
+      : r <= 700
+          ? 15.5
+          : r <= 1500
+              ? 14.5
+              : r <= 3000
+                  ? 13.5
+                  : 12.5;
 
   Future<void> _buscarDestino() async {
     FocusScope.of(context).unfocus();
@@ -33,7 +41,8 @@ class _MapaScreenState extends State<MapaScreen> {
     if (!mounted) return;
     setState(() => _buscandoDestino = false);
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error)));
     }
   }
 
@@ -61,7 +70,8 @@ class _MapaScreenState extends State<MapaScreen> {
         children: [
           FlutterMap(
             mapController: _mapa,
-            options: MapOptions(initialCenter: centro, initialZoom: _zoomParaRadio(b.radio)),
+            options: MapOptions(
+                initialCenter: centro, initialZoom: _zoomParaRadio(b.radio)),
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -72,8 +82,8 @@ class _MapaScreenState extends State<MapaScreen> {
                   point: centro,
                   radius: b.radio,
                   useRadiusInMeter: true,
-                  color: tema.colorScheme.primary.withOpacity(0.08),
-                  borderColor: tema.colorScheme.primary.withOpacity(0.6),
+                  color: tema.colorScheme.primary.withValues(alpha: 0.08),
+                  borderColor: tema.colorScheme.primary.withValues(alpha: 0.6),
                   borderStrokeWidth: 1.5,
                 ),
               ]),
@@ -82,18 +92,22 @@ class _MapaScreenState extends State<MapaScreen> {
                   point: centro,
                   width: 36,
                   height: 36,
-                  child: Icon(b.destino != null ? Icons.place : Icons.my_location,
-                      color: tema.colorScheme.error, size: 32),
+                  child: Icon(
+                      b.destino != null ? Icons.place : Icons.my_location,
+                      color: tema.colorScheme.error,
+                      size: 32),
                 ),
                 for (final p in b.resultados)
                   Marker(
                     point: LatLng(p.latitud, p.longitud),
-                    width: 80,
-                    height: 44,
+                    width: 96,
+                    height: 56,
                     child: _Pin(p, onTap: () => _abrirResumen(p)),
                   ),
               ]),
-              const RichAttributionWidget(attributions: [TextSourceAttribution('OpenStreetMap contributors')]),
+              const RichAttributionWidget(attributions: [
+                TextSourceAttribution('OpenStreetMap contributors')
+              ]),
             ],
           ),
           SafeArea(
@@ -113,12 +127,17 @@ class _MapaScreenState extends State<MapaScreen> {
                         border: InputBorder.none,
                         filled: true,
                         fillColor: tema.colorScheme.surface,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 14),
                         prefixIcon: const Icon(Icons.search),
                         suffixIcon: _buscandoDestino
                             ? const Padding(
                                 padding: EdgeInsets.all(14),
-                                child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
+                                child: SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2)))
                             : IconButton(
                                 tooltip: 'Usar mi ubicación',
                                 icon: const Icon(Icons.my_location),
@@ -132,12 +151,18 @@ class _MapaScreenState extends State<MapaScreen> {
                   ),
                   if (b.errorUbicacion != null && b.destino == null)
                     _Aviso(b.errorUbicacion!, tema.colorScheme.errorContainer),
-                  if (b.destino != null) _Aviso('Destino: ${b.destino!.nombre}', tema.colorScheme.secondaryContainer),
+                  if (b.destino != null)
+                    _Aviso('Destino: ${b.destino!.nombre}',
+                        tema.colorScheme.secondaryContainer),
                 ],
               ),
             ),
           ),
-          Positioned(left: 12, right: 12, bottom: 12, child: _PanelRadio(onVerLista: widget.onVerLista)),
+          Positioned(
+              left: 12,
+              right: 12,
+              bottom: 12,
+              child: _PanelRadio(onVerLista: widget.onVerLista)),
         ],
       ),
     );
@@ -156,7 +181,8 @@ class _MapaScreenState extends State<MapaScreen> {
               Text(p.nombre, style: Theme.of(context).textTheme.titleLarge),
               Text('${p.direccion} · ${distancia(p.distanciaM)}'),
               const SizedBox(height: 8),
-              Text('Por hora: ${tarifa(p.tarifaHora)}   ·   Por día: ${tarifa(p.tarifaDia)}'),
+              Text(
+                  'Por hora: ${tarifa(p.tarifaHora)}   ·   Por día: ${tarifa(p.tarifaDia)}'),
               Text(p.calificacion != null
                   ? '★ ${p.calificacion!.toStringAsFixed(1)} (${p.totalResenas} reseñas)'
                   : 'Aún sin reseñas'),
@@ -164,7 +190,10 @@ class _MapaScreenState extends State<MapaScreen> {
               FilledButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => DetalleScreen(parqueaderoId: p.id)));
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => DetalleScreen(parqueaderoId: p.id)));
                 },
                 child: const Text('Ver detalle y reseñas'),
               ),
@@ -184,10 +213,12 @@ class _Pin extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = Theme.of(context).colorScheme;
-    final etiqueta = p.tarifaHora == null ? 'P' : '\$${(p.tarifaHora! / 1000).toStringAsFixed(1)}k';
+    final etiqueta = p.tarifaHora == null
+        ? 'P'
+        : '\$${(p.tarifaHora! / 1000).toStringAsFixed(1)}k';
     return GestureDetector(
       onTap: onTap,
-      child: Column(children: [
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
@@ -195,9 +226,16 @@ class _Pin extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             boxShadow: const [BoxShadow(blurRadius: 3, color: Colors.black26)],
           ),
-          child: Text(etiqueta, style: TextStyle(color: c.onPrimary, fontWeight: FontWeight.bold, fontSize: 12)),
+          child: Text(
+            etiqueta,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                color: c.onPrimary, fontWeight: FontWeight.bold, fontSize: 12),
+          ),
         ),
-        Icon(Icons.arrow_drop_down, color: p.abiertoAhora == false ? c.outline : c.primary, size: 18),
+        Icon(Icons.arrow_drop_down,
+            color: p.abiertoAhora == false ? c.outline : c.primary, size: 18),
       ]),
     );
   }
@@ -212,7 +250,8 @@ class _Aviso extends StatelessWidget {
         width: double.infinity,
         margin: const EdgeInsets.only(top: 8),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(
+            color: color, borderRadius: BorderRadius.circular(12)),
         child: Text(texto),
       );
 }
@@ -233,12 +272,24 @@ class _PanelRadio extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Row(children: [
-              Text('Radio: ${distancia(b.radio.round())}', style: const TextStyle(fontWeight: FontWeight.w600)),
-              const Spacer(),
+              Expanded(
+                child: Text(
+                  'Radio: ${distancia(b.radio.round())}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
               if (b.cargando)
-                const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
               else
-                TextButton(onPressed: onVerLista, child: Text('${b.resultados.length} resultados · Comparar')),
+                TextButton(
+                  onPressed: onVerLista,
+                  child: Text('Comparar (${b.resultados.length})'),
+                ),
             ]),
             Slider(
               value: b.radio,
@@ -250,10 +301,14 @@ class _PanelRadio extends StatelessWidget {
               onChangeEnd: (_) => b.buscar(),
             ),
             if (enLimite)
-              Text(b.radio >= Config.radioMax ? 'Radio máximo alcanzado (5 km)' : 'Radio mínimo alcanzado (200 m)',
+              Text(
+                  b.radio >= Config.radioMax
+                      ? 'Radio máximo alcanzado (5 km)'
+                      : 'Radio mínimo alcanzado (200 m)',
                   style: Theme.of(context).textTheme.bodySmall),
             if (b.error != null)
-              Text(b.error!, style: TextStyle(color: Theme.of(context).colorScheme.error))
+              Text(b.error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error))
             else if (!b.cargando && b.resultados.isEmpty && b.mensaje != null)
               Row(children: [
                 Expanded(child: Text(b.mensaje!)),

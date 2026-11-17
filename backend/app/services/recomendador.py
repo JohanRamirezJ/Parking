@@ -169,6 +169,7 @@ class Evaluacion:
     manejo_km: float
     valores: dict = field(default_factory=dict)      # valor crudo por criterio
     imputados: set = field(default_factory=set)
+    criterios_sin_datos: set = field(default_factory=set)
     alertas: list = field(default_factory=list)
     puntajes: dict = field(default_factory=dict)     # sᵢ ∈ [0, 1]
     total: float = 0.0
@@ -190,7 +191,8 @@ def _texto_valor(k: str, v: float) -> str:
 
 def evaluar(candidatos: list[tuple[Parqueadero, float]], *, destino: tuple[float, float],
             origen: tuple[float, float] | None, horas: float, pesos: dict, vehiculo: dict,
-            llegada: datetime, incluir_cerrados: bool = False) -> list[Evaluacion]:
+            llegada: datetime, incluir_cerrados: bool = False,
+            precio_desconocido_neutro: bool = False) -> list[Evaluacion]:
     cfg = current_app.config
     factor, v_auto, v_pie = cfg["FACTOR_RUTA_URBANA"], cfg["VELOCIDAD_AUTO_KMH"], cfg["VELOCIDAD_PEATON_KMH"]
 
@@ -232,9 +234,13 @@ def evaluar(candidatos: list[tuple[Parqueadero, float]], *, destino: tuple[float
     seguridad_media = sum(seguridades) / len(seguridades) if seguridades else 3.0
     for e in evals:
         if e.valores["precio"] is None:
-            e.valores["precio"] = precio_peor
-            e.imputados.add("precio")
-            e.alertas.append("Tarifa no disponible: se asumió la más alta de la zona")
+            if precio_desconocido_neutro:
+                e.criterios_sin_datos.add("precio")
+                e.alertas.append("Tarifa no reportada: no se puede estimar el costo ni verificar el presupuesto")
+            else:
+                e.valores["precio"] = precio_peor
+                e.imputados.add("precio")
+                e.alertas.append("Tarifa no disponible: se asumió la más alta de la zona")
         if e.valores["seguridad"] is None:
             e.valores["seguridad"] = seguridad_media
             e.imputados.add("seguridad")
@@ -243,11 +249,18 @@ def evaluar(candidatos: list[tuple[Parqueadero, float]], *, destino: tuple[float
     # Normalización y puntaje ponderado
     suma_pesos = sum(pesos.values())
     for k, meta in CRITERIOS.items():
-        vals = [e.valores[k] for e in evals]
+        vals = [e.valores[k] for e in evals if e.valores[k] is not None]
+        if not vals:
+            for e in evals:
+                e.puntajes[k] = 0.5
+            continue
         lo, hi = min(vals), max(vals)
         rango = max(hi - lo, meta["umbral"])
         for e in evals:
             v = e.valores[k]
+            if v is None:
+                e.puntajes[k] = 0.5
+                continue
             s = 1 - (v - lo) / rango if meta["sentido"] == "min" else 1 - (hi - v) / rango
             e.puntajes[k] = max(0.0, min(1.0, s))
     for e in evals:
@@ -272,12 +285,14 @@ def _justificar(e: Evaluacion, pesos: dict, siguiente: Evaluacion | None, discri
     elif e.puntajes[debil] < 0.5 and debil not in fuertes:
         partes.append(f"Su punto débil es {CRITERIOS[debil]['nombre'].lower()} ({_texto_valor(debil, e.valores[debil])}).")
     if siguiente:
-        dif_costo = (siguiente.valores["precio"] + siguiente.valores["gasolina"] + siguiente.valores["rodamiento"]) - \
-                    (e.valores["precio"] + e.valores["gasolina"] + e.valores["rodamiento"])
         dif_min = siguiente.valores["tiempo"] - e.valores["tiempo"]
         comp = []
-        if abs(dif_costo) >= 500:
-            comp.append(f"cuesta {_fmt_cop(abs(dif_costo))} {'menos' if dif_costo > 0 else 'más'} en total")
+        if "precio" not in e.criterios_sin_datos and "precio" not in siguiente.criterios_sin_datos:
+            dif_costo = (siguiente.valores["precio"] + siguiente.valores["gasolina"] +
+                         siguiente.valores["rodamiento"]) - \
+                        (e.valores["precio"] + e.valores["gasolina"] + e.valores["rodamiento"])
+            if abs(dif_costo) >= 500:
+                comp.append(f"cuesta {_fmt_cop(abs(dif_costo))} {'menos' if dif_costo > 0 else 'más'} en total")
         if abs(dif_min) >= 1:
             comp.append(f"toma {abs(dif_min):.0f} min {'menos' if dif_min > 0 else 'más'}")
         if comp:
@@ -289,13 +304,29 @@ def serializar(evals: list[Evaluacion], pesos: dict, limite: int) -> list[dict]:
     if not evals:
         return []
     suma = sum(pesos.values())
-    discriminan = {k for k, m in CRITERIOS.items()
-                   if max(e.valores[k] for e in evals) - min(e.valores[k] for e in evals) >= m["umbral"] * 0.5}
+    discriminan = set()
+    for k, meta in CRITERIOS.items():
+        valores = [e.valores[k] for e in evals if e.valores[k] is not None]
+        if len(valores) > 1 and max(valores) - min(valores) >= meta["umbral"] * 0.5:
+            discriminan.add(k)
     salida = []
     for i, e in enumerate(evals[:limite]):
         siguiente = evals[i + 1] if i + 1 < len(evals) else None
         criterios = {}
         for k, meta in CRITERIOS.items():
+            if k in e.criterios_sin_datos:
+                criterios[k] = {
+                    "valor": None,
+                    "unidad": meta["unidad"],
+                    "texto": "No reportado",
+                    "puntaje": 0.5,
+                    "peso": pesos[k],
+                    "peso_pct": round(100 * pesos[k] / suma, 1),
+                    "aporte": round(100 * pesos[k] * e.puntajes[k] / suma, 1),
+                    "estimado": False,
+                    "disponible": False,
+                }
+                continue
             criterios[k] = {
                 "valor": round(e.valores[k], 2),
                 "unidad": meta["unidad"],
@@ -306,13 +337,14 @@ def serializar(evals: list[Evaluacion], pesos: dict, limite: int) -> list[dict]:
                 "aporte": round(100 * pesos[k] * e.puntajes[k] / suma, 1),
                 "estimado": k in e.imputados,
             }
-        costo_total = e.valores["precio"] + e.valores["gasolina"] + e.valores["rodamiento"]
+        costo_total = None if "precio" in e.criterios_sin_datos else (
+            e.valores["precio"] + e.valores["gasolina"] + e.valores["rodamiento"])
         salida.append({
             "posicion": i + 1,
             "puntaje": round(e.total, 1),
             "parqueadero": e.p.to_dict(e.caminar_m),
             "criterios": criterios,
-            "costo_total_estimado": round(costo_total),
+            "costo_total_estimado": round(costo_total) if costo_total is not None else None,
             "manejo_km": round(e.manejo_km, 2),
             "alertas": e.alertas,
             "justificacion": _justificar(e, pesos, siguiente, discriminan),
@@ -324,7 +356,10 @@ def recomendar(*, destino: tuple[float, float], origen: tuple[float, float] | No
                horas: float = 2, radio_m: float | None = None, perfil: str | None = None,
                pesos: dict | None = None, preferencias: dict | None = None, vehiculo: dict | None = None,
                llegada: datetime | None = None, incluir_cerrados: bool = False, limite: int = 10,
-               tarifa_max: float | None = None) -> dict:
+               tarifa_max: float | None = None,
+               candidatos: list[tuple[Parqueadero, float]] | None = None,
+               precio_desconocido_neutro: bool = False,
+               solo_abiertos: bool = False) -> dict:
     cfg = current_app.config
     if not 0.25 <= horas <= 72:
         raise ErrorRecomendacion("Las horas de estadía van de 0.25 a 72", "horas")
@@ -336,9 +371,26 @@ def recomendar(*, destino: tuple[float, float], origen: tuple[float, float] | No
     veh = parametros_vehiculo({**(prefs.get("vehiculo") or {}), **(vehiculo or {})})
     llegada = llegada or datetime.now(ZONA_BOGOTA).replace(tzinfo=None)
 
-    candidatos = buscar_cercanos(destino[0], destino[1], radio, tarifa_max=tarifa_max)
+    if candidatos is None:
+        candidatos = buscar_cercanos(destino[0], destino[1], radio, tarifa_max=tarifa_max,
+                                     solo_abiertos=solo_abiertos)
+    elif tarifa_max is not None:
+        candidatos = [(p, distancia) for p, distancia in candidatos
+                      if p.tarifa_hora is None or p.tarifa_hora <= tarifa_max]
+    if solo_abiertos:
+        candidatos = [(p, distancia) for p, distancia in candidatos if p.abierto_ahora() is True]
+
+    tarifas_desconocidas = (precio_desconocido_neutro and bool(candidatos)
+                            and all(costo_estadia(p, horas) is None for p, _ in candidatos))
+    if tarifas_desconocidas:
+        pesos_final = dict(pesos_final)
+        pesos_final["precio"] = 0.0
+        if not any(pesos_final.values()):
+            pesos_final["distancia"] = 1.0
+
     evals = evaluar(candidatos, destino=destino, origen=origen, horas=horas, pesos=pesos_final,
-                    vehiculo=veh, llegada=llegada, incluir_cerrados=incluir_cerrados)
+                    vehiculo=veh, llegada=llegada, incluir_cerrados=incluir_cerrados,
+                    precio_desconocido_neutro=tarifas_desconocidas)
     resultados = serializar(evals, pesos_final, limite)
     suma = sum(pesos_final.values())
     return {
@@ -359,5 +411,7 @@ def recomendar(*, destino: tuple[float, float], origen: tuple[float, float] | No
             "trayecto": "desde tu origen" if origen else "desvío desde el destino (no se envió origen)",
         },
         "resultados": resultados,
+        "criterios_sin_datos": sorted(
+            k for k in CRITERIOS if evals and all(k in e.criterios_sin_datos for e in evals)),
         "mensaje": None if resultados else "No hay parqueaderos abiertos en este radio. Prueba ampliando el radio.",
     }

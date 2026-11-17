@@ -1,5 +1,6 @@
 """SmartPark — backend Flask (API REST + panel web de administración)."""
 import click
+import logging
 from flask import Flask, redirect, url_for
 from flask_cors import CORS
 
@@ -9,6 +10,7 @@ from .extensions import db
 
 def create_app(entorno: str | None = None) -> Flask:
     app = Flask(__name__)
+    app.logger.setLevel(logging.INFO)
     app.config.from_object(get_config(entorno))
 
     db.init_app(app)

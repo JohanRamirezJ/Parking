@@ -10,6 +10,8 @@ import pytest
 from app.extensions import db
 from app.models import Parqueadero, Resena, Tarifa, Usuario, Visita
 from app.services import recomendador as rec
+from app.services.geo import haversine_m
+from app.services.openstreetmap import CandidatoOSM
 from tests.conftest import registrar
 
 DEST = {"lat": 4.6283, "lon": -74.0645}  # Hospital San Ignacio (ver conftest)
@@ -182,7 +184,13 @@ def test_resena_con_calificacion_de_seguridad(client, auth):
     assert r.status_code == 400
 
 
-def test_chat_usa_el_modelo_con_perfil_segun_la_consulta(client, auth):
+def test_chat_usa_el_modelo_con_perfil_segun_la_consulta(client, auth, monkeypatch):
+    p = Parqueadero(id=-501, nombre="Parqueadero OSM", direccion="Calle 1", latitud=4.629, longitud=-74.064,
+                    horario_apertura=time(0, 0), horario_cierre=time(0, 0))
+    p.tarifas.append(Tarifa(tipo="hora", unidad="hora", valor=3500, vigente=True))
+    candidato = CandidatoOSM(p, haversine_m(4.6283, -74.0645, p.latitud, p.longitud),
+                             "https://www.openstreetmap.org/node/125")
+    monkeypatch.setattr("app.services.chat.buscar_cercanos_osm", lambda lat, lon, radio: [candidato])
     d = client.post("/api/chat", json={"mensaje": "voy de noche al hospital San Ignacio por 3 horas"},
                     headers=auth).get_json()
     assert d["intencion"]["perfil"] == "seguridad" and d["intencion"]["horas"] == 3

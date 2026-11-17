@@ -31,21 +31,30 @@ class ListaScreen extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'distancia', label: Text('Distancia'), icon: Icon(Icons.near_me)),
-                ButtonSegment(value: 'tarifa', label: Text('Tarifa'), icon: Icon(Icons.attach_money)),
-                ButtonSegment(value: 'calificacion', label: Text('Calificación'), icon: Icon(Icons.star)),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final (orden, etiqueta, icono) in const [
+                  ('distancia', 'Distancia', Icons.near_me),
+                  ('tarifa', 'Tarifa', Icons.attach_money),
+                  ('calificacion', 'Calificación', Icons.star),
+                ])
+                  ChoiceChip(
+                    avatar: Icon(icono, size: 18),
+                    label: Text(etiqueta),
+                    selected: b.orden == orden,
+                    onSelected: (_) => b.cambiarOrden(orden),
+                  ),
               ],
-              selected: {b.orden},
-              onSelectionChanged: (s) => b.cambiarOrden(s.first),
             ),
           ),
           if (b.tarifaMin != null || b.tarifaMax != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: InputChip(
-                label: Text('Tarifa/hora: ${b.tarifaMin != null ? tarifa(b.tarifaMin) : '\$0'} – '
+                label: Text(
+                    'Tarifa/hora: ${b.tarifaMin != null ? tarifa(b.tarifaMin) : '\$0'} – '
                     '${b.tarifaMax != null ? tarifa(b.tarifaMax) : 'sin límite'}'),
                 onDeleted: () => b.cambiarRangoTarifa(null, null),
               ),
@@ -59,20 +68,28 @@ class ListaScreen extends StatelessWidget {
   Widget _cuerpo(BuildContext context, Busqueda b) {
     if (b.cargando) return const Center(child: CircularProgressIndicator());
     if (b.error != null) {
-      return _Vacio(icono: Icons.cloud_off, texto: b.error!, accion: ('Reintentar', b.buscar));
+      return _Vacio(
+          icono: Icons.cloud_off,
+          texto: b.error!,
+          accion: ('Reintentar', b.buscar));
     }
     if (!b.tieneReferencia) {
-      return const _Vacio(icono: Icons.search, texto: 'Busca un destino o activa tu ubicación en la pestaña Mapa.');
+      return const _Vacio(
+          icono: Icons.search,
+          texto: 'Busca un destino o activa tu ubicación en la pestaña Mapa.');
     }
     if (b.resultados.isEmpty) {
       return _Vacio(
         icono: Icons.local_parking,
         texto: b.mensaje ?? 'No hay resultados',
         accion: b.sugerirAmpliar
-            ? ('Ampliar radio', () {
-                b.cambiarRadio(b.radio * 2);
-                b.buscar();
-              })
+            ? (
+                'Ampliar radio',
+                () {
+                  b.cambiarRadio(b.radio * 2);
+                  b.buscar();
+                }
+              )
             : null,
       );
     }
@@ -82,7 +99,8 @@ class ListaScreen extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         itemCount: b.resultados.length,
         separatorBuilder: (_, __) => const SizedBox(height: 8),
-        itemBuilder: (_, i) => _Tarjeta(b.resultados[i], destacado: i == 0 && b.orden == 'tarifa'),
+        itemBuilder: (_, i) =>
+            _Tarjeta(b.resultados[i], destacado: i == 0 && b.orden == 'tarifa'),
       ),
     );
   }
@@ -95,22 +113,32 @@ class ListaScreen extends StatelessWidget {
         builder: (ctx, set) => SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(20),
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Tarifa por hora', style: Theme.of(ctx).textTheme.titleMedium),
-              Text('${tarifa(rango.start)} – ${rango.end >= 20000 ? 'sin límite' : tarifa(rango.end)}'),
-              RangeSlider(
-                values: rango,
-                min: 0,
-                max: 20000,
-                divisions: 40,
-                onChanged: (v) => set(() => rango = v),
-              ),
-              Row(children: [
-                TextButton(onPressed: () => Navigator.pop(ctx, const RangeValues(-1, -1)), child: const Text('Quitar filtro')),
-                const Spacer(),
-                FilledButton(onPressed: () => Navigator.pop(ctx, rango), child: const Text('Aplicar')),
-              ]),
-            ]),
+            child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Tarifa por hora',
+                      style: Theme.of(ctx).textTheme.titleMedium),
+                  Text(
+                      '${tarifa(rango.start)} – ${rango.end >= 20000 ? 'sin límite' : tarifa(rango.end)}'),
+                  RangeSlider(
+                    values: rango,
+                    min: 0,
+                    max: 20000,
+                    divisions: 40,
+                    onChanged: (v) => set(() => rango = v),
+                  ),
+                  Row(children: [
+                    TextButton(
+                        onPressed: () =>
+                            Navigator.pop(ctx, const RangeValues(-1, -1)),
+                        child: const Text('Quitar filtro')),
+                    const Spacer(),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(ctx, rango),
+                        child: const Text('Aplicar')),
+                  ]),
+                ]),
           ),
         ),
       ),
@@ -119,7 +147,8 @@ class ListaScreen extends StatelessWidget {
     if (r.start < 0) {
       b.cambiarRangoTarifa(null, null);
     } else {
-      b.cambiarRangoTarifa(r.start > 0 ? r.start : null, r.end < 20000 ? r.end : null);
+      b.cambiarRangoTarifa(
+          r.start > 0 ? r.start : null, r.end < 20000 ? r.end : null);
     }
   }
 }
@@ -136,45 +165,88 @@ class _Tarjeta extends StatelessWidget {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DetalleScreen(parqueaderoId: p.id))),
+        onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => DetalleScreen(parqueaderoId: p.id))),
         child: Padding(
           padding: const EdgeInsets.all(14),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                if (destacado)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text('MÁS ECONÓMICO',
-                        style: t.textTheme.labelSmall?.copyWith(color: t.colorScheme.primary, fontWeight: FontWeight.bold)),
-                  ),
-                Text(p.nombre, style: t.textTheme.titleMedium),
-                Text('${distancia(p.distanciaM)} · ${p.horario}', style: t.textTheme.bodySmall),
-                const SizedBox(height: 4),
-                Row(children: [
-                  Icon(Icons.star, size: 16, color: Colors.amber.shade700),
-                  Text(p.calificacion != null ? ' ${p.calificacion!.toStringAsFixed(1)} (${p.totalResenas})' : ' Sin reseñas',
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final detalles = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (destacado)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text('MÁS ECONÓMICO',
+                          style: t.textTheme.labelSmall?.copyWith(
+                              color: t.colorScheme.primary,
+                              fontWeight: FontWeight.bold)),
+                    ),
+                  Text(p.nombre, style: t.textTheme.titleMedium),
+                  Text('${distancia(p.distanciaM)} · ${p.horario}',
                       style: t.textTheme.bodySmall),
-                  if (p.abiertoAhora == false) ...[
-                    const SizedBox(width: 8),
-                    Text('Cerrado ahora', style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.error)),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.star,
+                            size: 16, color: Colors.amber.shade700),
+                        Text(
+                          p.calificacion != null
+                              ? ' ${p.calificacion!.toStringAsFixed(1)} (${p.totalResenas})'
+                              : ' Sin reseñas',
+                          style: t.textTheme.bodySmall,
+                        ),
+                      ]),
+                      if (p.abiertoAhora == false)
+                        Text('Cerrado ahora',
+                            style: t.textTheme.bodySmall
+                                ?.copyWith(color: t.colorScheme.error)),
+                      if (p.capacidadDisponible != null)
+                        Text('~${p.capacidadDisponible} cupos',
+                            style: t.textTheme.bodySmall),
+                    ],
+                  ),
+                ],
+              );
+              final precio = Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(tarifa(p.tarifaHora),
+                      style: sinTarifa
+                          ? t.textTheme.bodySmall
+                              ?.copyWith(fontStyle: FontStyle.italic)
+                          : t.textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold)),
+                  if (!sinTarifa)
+                    Text('por hora', style: t.textTheme.bodySmall),
+                  if (p.tarifaDia != null)
+                    Text('${tarifa(p.tarifaDia)}/día',
+                        style: t.textTheme.bodySmall),
+                ],
+              );
+
+              if (constraints.maxWidth < 360) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    detalles,
+                    const SizedBox(height: 8),
+                    Align(alignment: Alignment.centerRight, child: precio),
                   ],
-                  if (p.capacidadDisponible != null) ...[
-                    const SizedBox(width: 8),
-                    Text('~${p.capacidadDisponible} cupos', style: t.textTheme.bodySmall),
-                  ],
-                ]),
-              ]),
-            ),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text(tarifa(p.tarifaHora),
-                  style: sinTarifa
-                      ? t.textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic)
-                      : t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-              if (!sinTarifa) Text('por hora', style: t.textTheme.bodySmall),
-              if (p.tarifaDia != null) Text('${tarifa(p.tarifaDia)}/día', style: t.textTheme.bodySmall),
-            ]),
-          ]),
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [Expanded(child: detalles), precio],
+              );
+            },
+          ),
         ),
       ),
     );

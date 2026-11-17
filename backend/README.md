@@ -73,9 +73,20 @@ curl -X POST localhost:5000/api/recomendaciones -H 'Content-Type: application/js
 
 ## Chat IA
 
-La recomendación sale siempre del directorio (no se inventan parqueaderos). Se interpreta la consulta (perfil: "de noche" → seguridad, "barato"/"todo el día" → precio, "tengo afán" → tiempo; horas "por 3 horas"; presupuesto "menos de 6 mil"; destino "cerca del …"), se puntúan los candidatos reales con el módulo de IA y:
-- sin `OPENAI_API_KEY` → respuesta con plantilla;
-- con `OPENAI_API_KEY` → el modelo redacta la respuesta usando solo esos candidatos.
+Cada consulta busca parqueaderos cercanos en vivo con Overpass/OpenStreetMap. Los resultados son efímeros: se puntúan con el recomendador multicriterio y no se insertan en la tabla de parqueaderos. Los candidatos que OSM marca como privados o solo para clientes se descartan. Si falta tarifa u horario, se informa como desconocido; no se inventa el precio y una consulta “abierto ahora” solo incluye horarios verificados como 24/7.
+
+La búsqueda usa `OVERPASS_URL` (por defecto `https://overpass-api.de/api/interpreter`) y no necesita API key. El tiempo máximo de espera es 6 segundos (`OVERPASS_TIMEOUT_SECONDS`). Al ser un servicio público, puede imponer límites o estar temporalmente indisponible; en ese caso el chat informa el error en `aviso_osm` y recurre al directorio guardado de SmartPark, aplicando los mismos filtros de radio, tarifa y horario verificado. Si no hay registros que cumplan, lo indica sin inventar opciones. Los HTTP 429 se identifican como límite de consultas y los 502/503/504 como saturación o indisponibilidad. Se incluye atribución a OpenStreetMap cuando se muestran resultados de OSM.
+
+Para configurar el modelo o cambiar el servidor Overpass en el arranque Wi-Fi, edita `../.env` en la raíz del proyecto; `../iniciar-smartpark-wifi.bat` lee esas variables y `.gitignore` excluye ese archivo. Puedes definir `OPENAI_API_KEY` o `GEMINI_API_KEY`; si ambas están configuradas, se prioriza OpenAI. Para Docker Compose, el mismo `.env` raíz se carga automáticamente. Si ejecutas `python wsgi.py` manualmente, define las variables en esa misma sesión de PowerShell antes de iniciar el backend.
+
+La consulta se interpreta con reglas locales (perfil: “de noche” → seguridad, “barato”/“todo el día” → precio, “tengo afán” → tiempo; duración, presupuesto y destino). La búsqueda y los cálculos funcionan sin modelo de lenguaje:
+- sin `OPENAI_API_KEY` ni `GEMINI_API_KEY` → el chat redacta con una plantilla;
+- con `OPENAI_API_KEY` → OpenAI redacta usando los candidatos y puntajes calculados por SmartPark;
+- en su defecto, con `GEMINI_API_KEY` → Gemini redacta con esos mismos datos y puntajes. Los candidatos pueden provenir de OSM o del directorio local si Overpass falla o no encuentra opciones válidas.
+
+La llamada al modelo espera hasta 5 segundos y limita la salida a 256 tokens con temperatura 0,3. Si el proveedor rechaza la petición por cuota/límite, saturación, clave o conectividad, el chat muestra `aviso_ia` y redacta una respuesta con la plantilla de SmartPark; si la IA falla con candidatos OSM, puede usar el directorio local como respaldo de los resultados. El aviso distingue cuota/saldo de límite temporal cuando el proveedor lo especifica; para confirmar si se agotó específicamente el nivel gratuito, revisa el panel de uso del proveedor.
+
+Al ejecutar el backend en una terminal, una respuesta exitosa registra `Respuesta generada correctamente por Gemini` (o OpenAI) con el modelo utilizado. También se registra si falta una clave. Estos mensajes no aparecen en los logs de Flutter del teléfono.
 
 ## Pendiente / decisiones abiertas
 
