@@ -13,6 +13,7 @@ class Busqueda extends ChangeNotifier {
   Position? miUbicacion;
   String? errorUbicacion;
   Destino? destino;
+  bool modoTrayecto = false;
 
   double radio = Config.radioDefecto;
   String orden = 'distancia'; // distancia | tarifa | calificacion
@@ -25,24 +26,36 @@ class Busqueda extends ChangeNotifier {
   bool cargando = false;
   String? error;
 
-  double get lat => destino?.latitud ?? miUbicacion?.latitude ?? Config.bogotaLat;
-  double get lon => destino?.longitud ?? miUbicacion?.longitude ?? Config.bogotaLon;
+  double get lat =>
+      destino?.latitud ?? miUbicacion?.latitude ?? Config.bogotaLat;
+  double get lon =>
+      destino?.longitud ?? miUbicacion?.longitude ?? Config.bogotaLon;
   bool get tieneReferencia => destino != null || miUbicacion != null;
 
   /// HU 4: solicitar permiso y capturar coordenadas.
-  Future<void> obtenerUbicacion() async {
+  void cambiarModoTrayecto(bool activo) {
+    if (modoTrayecto == activo) return;
+    modoTrayecto = activo;
+    notifyListeners();
+  }
+
+  Future<void> obtenerUbicacion({bool conservarDestino = false}) async {
     errorUbicacion = null;
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
         errorUbicacion = 'Activa el GPS del teléfono para usar tu ubicación.';
       } else {
         var permiso = await Geolocator.checkPermission();
-        if (permiso == LocationPermission.denied) permiso = await Geolocator.requestPermission();
-        if (permiso == LocationPermission.denied || permiso == LocationPermission.deniedForever) {
-          errorUbicacion = 'Permiso de ubicación rechazado. Actívalo manualmente en la configuración del teléfono.';
+        if (permiso == LocationPermission.denied) {
+          permiso = await Geolocator.requestPermission();
+        }
+        if (permiso == LocationPermission.denied ||
+            permiso == LocationPermission.deniedForever) {
+          errorUbicacion =
+              'Permiso de ubicación rechazado. Actívalo manualmente en la configuración del teléfono.';
         } else {
           miUbicacion = await Geolocator.getCurrentPosition();
-          destino = null;
+          if (!conservarDestino) destino = null;
         }
       }
     } catch (_) {
@@ -61,7 +74,9 @@ class Busqueda extends ChangeNotifier {
       await buscar();
       return null;
     } on ApiException catch (e) {
-      return e.codigo == 'destino_no_encontrado' ? 'Destino no encontrado' : e.mensaje;
+      return e.codigo == 'destino_no_encontrado'
+          ? 'Destino no encontrado'
+          : e.mensaje;
     }
   }
 
@@ -77,7 +92,12 @@ class Busqueda extends ChangeNotifier {
     notifyListeners();
     try {
       final r = await api.buscar(
-          lat: lat, lon: lon, radio: radio, orden: orden, tarifaMin: tarifaMin, tarifaMax: tarifaMax);
+          lat: lat,
+          lon: lon,
+          radio: radio,
+          orden: orden,
+          tarifaMin: tarifaMin,
+          tarifaMax: tarifaMax);
       resultados = r.parqueaderos;
       mensaje = r.mensaje;
       sugerirAmpliar = r.sugerirAmpliar;

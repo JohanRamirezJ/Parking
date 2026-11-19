@@ -50,6 +50,8 @@ class TestConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = os.getenv("TEST_DATABASE_URL", "sqlite:///:memory:")
     JWT_EXP_MINUTES = 5
+    OPENAI_API_KEY = ""
+    GEMINI_API_KEY = ""
 
 
 def get_config(name: str | None):

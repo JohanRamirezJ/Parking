@@ -119,9 +119,12 @@ class Parqueadero(db.Model):
         return a <= m < c if a < c else (m >= a or m < c)
 
     def to_dict(self, distancia_m: float | None = None) -> dict:
+        nombre = self.nombre
+        if nombre.endswith(" (demo)"):
+            nombre = f"{nombre[:-7]} -"
         d = {
             "id": self.id,
-            "nombre": self.nombre,
+            "nombre": nombre,
             "direccion": self.direccion,
             "latitud": self.latitud,
             "longitud": self.longitud,

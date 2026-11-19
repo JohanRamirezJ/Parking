@@ -96,7 +96,7 @@ lib/
     perfil_screen.dart   HU 3 + notificaciones de moderación
 ```
 
-Flujo de 3 pasos (RNF-03): escribir destino → ver mapa/lista comparativa → abrir detalle.
+En Mapa, los iconos del borde derecho permiten buscar **cerca de mí** o activar **Desde mi ubicación**; al seleccionarlos, la app muestra una descripción breve. También puedes escribir un lugar para buscar a su alrededor o usarlo como destino. En el modo trayecto, «Ver costos» abre Recomendación inteligente, que estima el viaje desde el GPS hasta cada parqueadero, la caminata al destino y el costo de gasolina, rodamiento y parqueo. Son aproximaciones en línea recta con un factor urbano; no usan rutas ni tráfico en tiempo real.
 
 ## Pruebas
 

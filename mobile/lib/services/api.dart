@@ -28,7 +28,7 @@ class Api {
 
   final http.Client _http = http.Client();
   static const _timeout = Duration(seconds: 10);
-  static const _chatTimeout = Duration(seconds: 20);
+  static const _chatTimeout = Duration(seconds: 30);
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',

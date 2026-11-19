@@ -2,7 +2,7 @@ import json
 from io import BytesIO
 from urllib.error import HTTPError
 
-from app.services.chat import _respuesta_llm
+from app.services.chat import _interpretar_con_ia, _respuesta_llm
 
 
 _RANKING = {
@@ -78,6 +78,79 @@ def test_chat_redacta_con_gemini_si_no_hay_clave_openai(app, monkeypatch, caplog
     assert body["contents"][0]["parts"][0]["text"]
     assert body["generationConfig"] == {"temperature": 0.3, "maxOutputTokens": 256}
     assert "Respuesta generada correctamente por Gemini" in caplog.text
+
+
+def test_chat_interpreta_parametros_estructurados_con_gemini(app, monkeypatch):
+    capturada = {}
+    intencion = {
+        "buscar_parqueaderos": True,
+        "destino_texto": "unicentro",
+        "perfil": "precio",
+        "orden": "tarifa",
+        "horas": 3,
+        "tarifa_max": 6000,
+        "solo_abiertos": True,
+        "radio_m": 1500,
+    }
+
+    def responder(request, timeout):
+        capturada["request"] = request
+        capturada["timeout"] = timeout
+        return _FakeResponse({
+            "candidates": [{
+                "content": {"parts": [{"text": json.dumps(intencion)}]}
+            }]
+        })
+
+    monkeypatch.setattr("app.services.chat.urllib.request.urlopen", responder)
+    with app.app_context():
+        app.config["OPENAI_API_KEY"] = ""
+        app.config["GEMINI_API_KEY"] = "gemini-test-key"
+        app.config["GEMINI_MODEL"] = "gemini-3.8-flash"
+        resultado, aviso, proveedor, modelo = _interpretar_con_ia(
+            "Busco algo económico por tres horas, abierto ahora, máximo seis mil y a 1.5 km de Unicentro")
+
+    body = json.loads(capturada["request"].data)
+    assert resultado == intencion
+    assert aviso is None
+    assert proveedor == "Gemini"
+    assert modelo == "gemini-3.8-flash"
+    assert capturada["timeout"] == 5
+    assert body["generationConfig"]["responseMimeType"] == "application/json"
+    assert "perfil" in body["systemInstruction"]["parts"][0]["text"]
+
+
+def test_chat_descarta_orden_ia_fuera_del_esquema(app, monkeypatch):
+    def responder(request, timeout):
+        return _FakeResponse({
+            "candidates": [{
+                "content": {
+                    "parts": [{
+                        "text": json.dumps({
+                            "buscar_parqueaderos": True,
+                            "destino_texto": None,
+                            "perfil": None,
+                            "orden": "mas_bonito",
+                            "horas": None,
+                            "tarifa_max": None,
+                            "solo_abiertos": False,
+                            "radio_m": None,
+                        })
+                    }]
+                }
+            }]
+        })
+
+    monkeypatch.setattr("app.services.chat.urllib.request.urlopen", responder)
+    with app.app_context():
+        app.config["OPENAI_API_KEY"] = ""
+        app.config["GEMINI_API_KEY"] = "gemini-test-key"
+        resultado, aviso, proveedor, modelo = _interpretar_con_ia("busco un parqueadero")
+
+    assert resultado is None
+    assert aviso.startswith("Aviso de IA: Gemini")
+    assert proveedor == "Gemini"
+    assert modelo == app.config["GEMINI_MODEL"]
 
 
 def test_chat_prioriza_openai_si_estan_ambas_claves(app, monkeypatch):

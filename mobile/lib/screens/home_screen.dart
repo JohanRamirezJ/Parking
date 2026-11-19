@@ -31,7 +31,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final paginas = [
-      MapaScreen(onVerLista: () => setState(() => _tab = 1)),
+      MapaScreen(
+        onVerLista: () => setState(() => _tab = 1),
+        onVerRecomendacion: () => setState(() => _tab = 2),
+      ),
       const ListaScreen(),
       RecomendarScreen(onIrAlMapa: () => setState(() => _tab = 0)),
       ChatScreen(onVerEnMapa: () => setState(() => _tab = 0)),
@@ -43,13 +46,24 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: _tab,
         onDestinationSelected: (i) => setState(() => _tab = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Mapa'),
-          NavigationDestination(icon: Icon(Icons.compare_arrows), label: 'Comparar'),
           NavigationDestination(
-              icon: Icon(Icons.auto_awesome_outlined), selectedIcon: Icon(Icons.auto_awesome), label: 'Recomendar'),
+              icon: Icon(Icons.map_outlined),
+              selectedIcon: Icon(Icons.map),
+              label: 'Mapa'),
           NavigationDestination(
-              icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: 'Asistente'),
-          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Perfil'),
+              icon: Icon(Icons.compare_arrows), label: 'Comparar'),
+          NavigationDestination(
+              icon: Icon(Icons.auto_awesome_outlined),
+              selectedIcon: Icon(Icons.auto_awesome),
+              label: 'Recomendar'),
+          NavigationDestination(
+              icon: Icon(Icons.chat_bubble_outline),
+              selectedIcon: Icon(Icons.chat_bubble),
+              label: 'Asistente'),
+          NavigationDestination(
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person),
+              label: 'Perfil'),
         ],
       ),
     );

@@ -1,5 +1,6 @@
 """Asistente SmartPark: busca candidatos efímeros en OSM y los puntúa localmente."""
 import json
+import math
 import re
 import time
 import urllib.request
@@ -82,6 +83,165 @@ def interpretar(consulta: str) -> dict:
     return intencion
 
 
+def _configuracion_proveedor() -> tuple[str, str, str, dict[str, str]] | None:
+    openai_key = current_app.config.get("OPENAI_API_KEY")
+    gemini_key = current_app.config.get("GEMINI_API_KEY")
+    if openai_key:
+        return (
+            "OpenAI",
+            current_app.config["OPENAI_MODEL"],
+            "https://api.openai.com/v1/chat/completions",
+            {"Authorization": f"Bearer {openai_key}"},
+        )
+    if gemini_key:
+        modelo = current_app.config["GEMINI_MODEL"]
+        return (
+            "Gemini",
+            modelo,
+            f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent",
+            {"x-goog-api-key": gemini_key},
+        )
+    return None
+
+
+def _validar_intencion_ia(datos: object) -> dict:
+    if not isinstance(datos, dict):
+        raise ValueError("La interpretación no es un objeto JSON")
+
+    orden = datos.get("orden")
+    if orden not in {"distancia", "tarifa", "calificacion"}:
+        raise ValueError("Orden de búsqueda inválido")
+
+    perfil = datos.get("perfil")
+    if perfil is not None and perfil not in PERFILES:
+        raise ValueError("Perfil de búsqueda inválido")
+
+    destino = datos.get("destino_texto")
+    if destino is not None:
+        if not isinstance(destino, str) or not destino.strip() or len(destino) > 150:
+            raise ValueError("Destino inválido")
+        destino = destino.strip()
+        if normalizar(destino) in {"mi", "mi ubicacion", "aqui", "aca", "donde estoy"}:
+            destino = None
+
+    def numero(opcion: str, *, minimo: float) -> float | None:
+        valor = datos.get(opcion)
+        if valor is None:
+            return None
+        if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+            raise ValueError(f"{opcion} debe ser numérico")
+        valor = float(valor)
+        if not math.isfinite(valor) or valor < minimo:
+            raise ValueError(f"{opcion} fuera de rango")
+        return valor
+
+    horas = numero("horas", minimo=0.25)
+    tarifa_max = numero("tarifa_max", minimo=0)
+    radio_m = numero("radio_m", minimo=1)
+    solo_abiertos = datos.get("solo_abiertos")
+    buscar = datos.get("buscar_parqueaderos")
+    if not isinstance(solo_abiertos, bool) or not isinstance(buscar, bool):
+        raise ValueError("Faltan indicadores booleanos")
+
+    return {
+        "orden": orden,
+        "perfil": perfil,
+        "horas": horas,
+        "tarifa_max": tarifa_max,
+        "solo_abiertos": solo_abiertos,
+        "radio_m": radio_m,
+        "destino_texto": destino,
+        "buscar_parqueaderos": buscar,
+    }
+
+
+def _interpretar_con_ia(
+    consulta: str,
+) -> tuple[dict | None, str | None, str | None, str | None]:
+    configuracion = _configuracion_proveedor()
+    if configuracion is None:
+        return None, None, None, None
+    proveedor, modelo, url, headers = configuracion
+
+    instruccion = (
+        "Interpreta la solicitud de parqueo en español y devuelve solo un objeto JSON con "
+        "los campos del esquema. No respondas al usuario ni inventes datos. "
+        "buscar_parqueaderos es true si solicita buscar, comparar o recomendar parqueaderos. "
+        "destino_texto debe ser solo el nombre del lugar cuando menciona uno; para 'cerca de mí', "
+        "'aquí' o 'mi ubicación', usa null porque las coordenadas se envían por separado. "
+        "perfil puede ser null, equilibrado (sin preferencia dominante), seguridad "
+        "(seguridad, noche, mejor calificado), precio "
+        "(barato, económico), tiempo (afán, rapidez) o vehiculo (gasolina, desgaste, cuidar el carro). "
+        "orden: distancia para más cercanos, tarifa para más baratos, calificacion para mejor calificados. "
+        "Convierte duraciones a horas (media hora=0.5, todo el día=10), presupuestos a COP "
+        "(6 mil=6000, 5k=5000) y radios a metros (1 km=1000, una cuadra=100). "
+        "Usa null si no se especifica horas, tarifa_max, "
+        "radio_m o destino_texto. solo_abiertos es true si pide abierto ahora, 24 horas o de noche. "
+        "Esquema: {buscar_parqueaderos:boolean, destino_texto:string|null, perfil:string|null, "
+        "orden:string, horas:number|null, tarifa_max:number|null, solo_abiertos:boolean, radio_m:number|null}."
+    )
+    mensaje = f"Solicitud del usuario: {consulta}"
+    if proveedor == "OpenAI":
+        cuerpo = {
+            "model": modelo,
+            "temperature": 0,
+            "max_tokens": 256,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": instruccion},
+                {"role": "user", "content": mensaje},
+            ],
+        }
+    else:
+        cuerpo = {
+            "systemInstruction": {"parts": [{"text": instruccion}]},
+            "contents": [{"role": "user", "parts": [{"text": mensaje}]}],
+            "generationConfig": {
+                "temperature": 0,
+                "maxOutputTokens": 256,
+                "responseMimeType": "application/json",
+            },
+        }
+    headers = {**headers, "Content-Type": "application/json"}
+    req = urllib.request.Request(url, data=json.dumps(cuerpo).encode("utf-8"), headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=5) as response:
+            respuesta = json.loads(response.read())
+        if proveedor == "OpenAI":
+            texto = respuesta["choices"][0]["message"]["content"].strip()
+        else:
+            partes = respuesta["candidates"][0]["content"]["parts"]
+            texto = "".join(
+                parte["text"] for parte in partes
+                if isinstance(parte, dict) and isinstance(parte.get("text"), str)
+                and not parte.get("thought")
+            ).strip()
+        intencion = _validar_intencion_ia(json.loads(texto))
+        current_app.logger.info(
+            "Solicitud interpretada por %s (modelo %s).", proveedor, modelo)
+        return intencion, None, proveedor, modelo
+    except urllib.error.HTTPError as exc:
+        aviso = _aviso_error_http_modelo(proveedor, exc.code, exc.read())
+        current_app.logger.warning("La API de %s respondió HTTP %s al interpretar la consulta.",
+                                   proveedor, exc.code)
+        return None, aviso, proveedor, modelo
+    except (urllib.error.URLError, TimeoutError) as exc:
+        current_app.logger.warning(
+            "No se pudo interpretar la consulta con %s: %s", proveedor, exc)
+        return (
+            None,
+            f"Aviso de IA: no se pudo conectar con {proveedor}. "
+            "Se muestra una respuesta de respaldo; revisa la conexión e inténtalo más tarde.",
+            proveedor,
+            modelo,
+        )
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+        current_app.logger.warning(
+            "No se pudo interpretar la respuesta de %s: %s", proveedor, exc)
+        return None, (f"Aviso de IA: {proveedor} devolvió una respuesta inesperada. "
+                      "Se muestra una respuesta de respaldo."), proveedor, modelo
+
+
 def _formato_cop(v: float | None) -> str:
     return "tarifa no disponible" if v is None else "$" + f"{v:,.0f}".replace(",", ".")
 
@@ -133,21 +293,11 @@ def _aviso_error_http_modelo(proveedor: str, codigo: int, contenido: bytes) -> s
 
 
 def _respuesta_llm(consulta: str, destino_nombre: str, r: dict) -> tuple[str | None, str | None]:
-    openai_key = current_app.config.get("OPENAI_API_KEY")
-    gemini_key = current_app.config.get("GEMINI_API_KEY")
-    if openai_key:
-        proveedor = "OpenAI"
-        modelo = current_app.config["OPENAI_MODEL"]
-        url = "https://api.openai.com/v1/chat/completions"
-        headers = {"Authorization": f"Bearer {openai_key}"}
-    elif gemini_key:
-        proveedor = "Gemini"
-        modelo = current_app.config["GEMINI_MODEL"]
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
-        headers = {"x-goog-api-key": gemini_key}
-    else:
+    configuracion = _configuracion_proveedor()
+    if configuracion is None:
         current_app.logger.info("No hay clave de IA configurada; se usará la respuesta predeterminada.")
         return None, None
+    proveedor, modelo, url, headers = configuracion
 
     contexto = [{"nombre": x["parqueadero"]["nombre"], "direccion": x["parqueadero"]["direccion"],
                  "horario_apertura": x["parqueadero"]["horario_apertura"],
@@ -217,32 +367,46 @@ def _respuesta_llm(consulta: str, destino_nombre: str, r: dict) -> tuple[str | N
 
 def responder(consulta: str, lat: float | None, lon: float | None, preferencias: dict | None = None) -> dict:
     t0 = time.perf_counter()
-    intencion = interpretar(consulta)
+    intencion_ia, aviso_ia, proveedor_ia, modelo_ia = _interpretar_con_ia(consulta)
+    intencion = intencion_ia or interpretar(consulta)
+    ia_usada = False
+
+    def salida(texto: str, **datos) -> dict:
+        return {
+            "respuesta": f"{texto}\n\n{aviso_ia}" if aviso_ia else texto,
+            "aviso_ia": aviso_ia,
+            "ia_usada": ia_usada,
+            "interpretacion_ia_usada": intencion_ia is not None,
+            "proveedor_ia": proveedor_ia if intencion_ia is not None or aviso_ia or ia_usada else None,
+            "modelo_ia": modelo_ia if intencion_ia is not None or aviso_ia or ia_usada else None,
+            "tiempo_respuesta_ms": int((time.perf_counter() - t0) * 1000),
+            **datos,
+        }
+
     if not intencion["buscar_parqueaderos"]:
-        return {"respuesta": "Puedo buscar parqueaderos cercanos. Dime un lugar o activa tu ubicación y cuéntame qué prefieres.",
-                "parqueadero_recomendado": None, "alternativas": [], "intencion": intencion,
-                "tiempo_respuesta_ms": int((time.perf_counter() - t0) * 1000)}
+        return salida(
+            "Puedo buscar parqueaderos cercanos. Dime un lugar o activa tu ubicación y cuéntame qué prefieres.",
+            parqueadero_recomendado=None, alternativas=[], intencion=intencion)
     destino_nombre = "tu ubicación"
     origen = None
 
     if intencion["destino_texto"]:
         geo = geocodificar(intencion["destino_texto"])
         if not geo:
-            return {"respuesta": f"No pude ubicar «{intencion['destino_texto']}» en Bogotá. Prueba con otro nombre o dirección.",
-                    "parqueadero_recomendado": None, "alternativas": [], "intencion": intencion,
-                    "tiempo_respuesta_ms": int((time.perf_counter() - t0) * 1000)}
+            return salida(
+                f"No pude ubicar «{intencion['destino_texto']}» en Bogotá. Prueba con otro nombre o dirección.",
+                parqueadero_recomendado=None, alternativas=[], intencion=intencion)
         if lat is not None and lon is not None:
             origen = (lat, lon)  # el usuario está en (lat, lon) y va hacia el destino
         lat, lon, destino_nombre = geo["latitud"], geo["longitud"], geo["nombre"]
     if lat is None or lon is None:
-        return {"respuesta": "¿Cerca de dónde necesitas parquear? Escribe un lugar (por ejemplo "
-                             "\"cerca del Hospital San Ignacio\") o activa tu ubicación.",
-                "parqueadero_recomendado": None, "alternativas": [], "intencion": intencion,
-                "tiempo_respuesta_ms": int((time.perf_counter() - t0) * 1000)}
+        return salida(
+            "¿Cerca de dónde necesitas parquear? Escribe un lugar (por ejemplo "
+            "\"cerca del Hospital San Ignacio\") o activa tu ubicación.",
+            parqueadero_recomendado=None, alternativas=[], intencion=intencion)
     if not en_bogota(lat, lon):
-        return {"respuesta": "SmartPark por ahora solo busca parqueaderos en Bogotá.",
-                "parqueadero_recomendado": None, "alternativas": [], "intencion": intencion,
-                "tiempo_respuesta_ms": int((time.perf_counter() - t0) * 1000)}
+        return salida("SmartPark por ahora solo busca parqueaderos en Bogotá.",
+                      parqueadero_recomendado=None, alternativas=[], intencion=intencion)
 
     cfg = current_app.config
     radio = intencion["radio_m"] or cfg["RADIO_DEFECTO_M"]
@@ -286,10 +450,9 @@ def responder(consulta: str, lat: float | None, lon: float | None, preferencias:
             fuente_datos = "directorio_local"
             r = puntuar(None, False)
     except ErrorRecomendacion as exc:
-        return {"respuesta": str(exc), "parqueadero_recomendado": None, "alternativas": [],
-                "aviso_osm": aviso_osm, "intencion": intencion, "destino": destino,
-                "fuente_datos": fuente_datos,
-                "tiempo_respuesta_ms": int((time.perf_counter() - t0) * 1000)}
+        return salida(str(exc), parqueadero_recomendado=None, alternativas=[],
+                      aviso_osm=aviso_osm, intencion=intencion, destino=destino,
+                      fuente_datos=fuente_datos)
 
     if not r["resultados"]:
         if intencion["solo_abiertos"]:
@@ -309,18 +472,17 @@ def responder(consulta: str, lat: float | None, lon: float | None, preferencias:
         texto += f" a {round(radio)} m de {destino_nombre}."
         if radio < cfg["RADIO_MAX_M"]:
             texto += " Puedes ampliar el radio de búsqueda."
-        if aviso_osm:
-            texto = f"{aviso_osm} {texto}"
-        return {"respuesta": texto, "aviso_osm": aviso_osm,
-                "parqueadero_recomendado": None, "alternativas": [],
-                "intencion": intencion, "destino": destino, "fuente_datos": fuente_datos,
-                "total_osm": total_osm,
-                "tiempo_respuesta_ms": int((time.perf_counter() - t0) * 1000)}
+        return salida(texto, aviso_osm=aviso_osm, parqueadero_recomendado=None,
+                      alternativas=[], intencion=intencion, destino=destino,
+                      fuente_datos=fuente_datos, total_osm=total_osm)
 
-    texto_llm, aviso_ia = _respuesta_llm(consulta, destino_nombre, r)
+    texto_llm, aviso_redaccion = _respuesta_llm(consulta, destino_nombre, r)
+    if aviso_redaccion and not aviso_ia:
+        aviso_ia = aviso_redaccion
+    ia_usada = texto_llm is not None
     if fuente_datos == "openstreetmap":
         urls_osm = {c.parqueadero.id: c.url for c in candidatos_osm}
-        if aviso_ia:
+        if aviso_redaccion:
             respaldo = puntuar(None, False)
             if respaldo["resultados"]:
                 r = respaldo
@@ -344,21 +506,18 @@ def responder(consulta: str, lat: float | None, lon: float | None, preferencias:
         texto += " No se puede verificar si cumple tu presupuesto: no se reporta la tarifa."
     if fuente_datos == "openstreetmap":
         texto += " Datos © OpenStreetMap contributors."
-    for aviso in (aviso_osm, aviso_ia, aviso_respaldo):
-        if aviso:
-            texto += " " + aviso
-    return {
-        "respuesta": texto,
-        "aviso_osm": aviso_osm,
-        "aviso_ia": aviso_ia,
-        "aviso_respaldo": aviso_respaldo,
-        "parqueadero_recomendado": top["parqueadero"],
-        "puntaje": top["puntaje"],
-        "alternativas": [x["parqueadero"] for x in r["resultados"][1:3]],
-        "recomendacion": r,
-        "intencion": intencion,
-        "destino": destino,
-        "fuente_datos": fuente_datos,
-        "total_osm": total_osm,
-        "tiempo_respuesta_ms": int((time.perf_counter() - t0) * 1000),
-    }
+    if aviso_respaldo:
+        texto += " " + aviso_respaldo
+    return salida(
+        texto,
+        aviso_osm=aviso_osm,
+        aviso_respaldo=aviso_respaldo,
+        parqueadero_recomendado=top["parqueadero"],
+        puntaje=top["puntaje"],
+        alternativas=[x["parqueadero"] for x in r["resultados"][1:3]],
+        recomendacion=r,
+        intencion=intencion,
+        destino=destino,
+        fuente_datos=fuente_datos,
+        total_osm=total_osm,
+    )

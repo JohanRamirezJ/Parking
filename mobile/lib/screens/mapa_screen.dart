@@ -12,7 +12,12 @@ import 'detalle_screen.dart';
 /// HU 5 (buscar destino), HU 6 (ver parqueaderos en mapa), HU 7 (ajustar radio).
 class MapaScreen extends StatefulWidget {
   final VoidCallback onVerLista;
-  const MapaScreen({super.key, required this.onVerLista});
+  final VoidCallback onVerRecomendacion;
+  const MapaScreen({
+    super.key,
+    required this.onVerLista,
+    required this.onVerRecomendacion,
+  });
 
   @override
   State<MapaScreen> createState() => _MapaScreenState();
@@ -23,6 +28,8 @@ class _MapaScreenState extends State<MapaScreen> {
   final _texto = TextEditingController();
   bool _buscandoDestino = false;
   double? _ultimoLat, _ultimoLon;
+  double? _ultimaLatOrigen, _ultimaLonOrigen;
+  bool? _ultimoModoTrayecto;
 
   double _zoomParaRadio(double r) => r <= 300
       ? 16.5
@@ -46,13 +53,58 @@ class _MapaScreenState extends State<MapaScreen> {
     }
   }
 
+  void _mostrarDescripcion(String texto) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(texto),
+        duration: const Duration(seconds: 3),
+      ));
+  }
+
+  void _buscarCercaDeMi(Busqueda busqueda) {
+    busqueda.cambiarModoTrayecto(false);
+    _texto.clear();
+    busqueda.obtenerUbicacion();
+    _mostrarDescripcion(
+        'Cerca de mí: busca parqueaderos alrededor de tu ubicación actual.');
+  }
+
+  void _activarModoTrayecto(Busqueda busqueda) {
+    busqueda.cambiarModoTrayecto(true);
+    busqueda.obtenerUbicacion(conservarDestino: true);
+    _mostrarDescripcion(
+        'Desde mi ubicación: el GPS será el origen y el lugar que escribas, el destino. Distancias y costos son estimados.');
+  }
+
   void _seguirReferencia(Busqueda b) {
-    if (b.lat != _ultimoLat || b.lon != _ultimoLon) {
+    final origenLat = b.miUbicacion?.latitude;
+    final origenLon = b.miUbicacion?.longitude;
+    if (b.lat != _ultimoLat ||
+        b.lon != _ultimoLon ||
+        origenLat != _ultimaLatOrigen ||
+        origenLon != _ultimaLonOrigen ||
+        b.modoTrayecto != _ultimoModoTrayecto) {
       _ultimoLat = b.lat;
       _ultimoLon = b.lon;
+      _ultimaLatOrigen = origenLat;
+      _ultimaLonOrigen = origenLon;
+      _ultimoModoTrayecto = b.modoTrayecto;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         try {
-          _mapa.move(LatLng(b.lat, b.lon), _zoomParaRadio(b.radio));
+          if (b.modoTrayecto && b.destino != null && b.miUbicacion != null) {
+            _mapa.fitCamera(CameraFit.coordinates(
+              coordinates: [
+                LatLng(b.miUbicacion!.latitude, b.miUbicacion!.longitude),
+                LatLng(b.destino!.latitud, b.destino!.longitud),
+              ],
+              padding: const EdgeInsets.fromLTRB(40, 150, 40, 150),
+              maxZoom: _zoomParaRadio(b.radio),
+            ));
+          } else {
+            _mapa.move(LatLng(b.lat, b.lon), _zoomParaRadio(b.radio));
+          }
         } catch (_) {/* el mapa aún no está listo */}
       });
     }
@@ -88,6 +140,15 @@ class _MapaScreenState extends State<MapaScreen> {
                 ),
               ]),
               MarkerLayer(markers: [
+                if (b.modoTrayecto && b.miUbicacion != null)
+                  Marker(
+                    point: LatLng(
+                        b.miUbicacion!.latitude, b.miUbicacion!.longitude),
+                    width: 36,
+                    height: 36,
+                    child: const Icon(Icons.my_location,
+                        color: Colors.blue, size: 28),
+                  ),
                 Marker(
                   point: centro,
                   width: 36,
@@ -123,13 +184,15 @@ class _MapaScreenState extends State<MapaScreen> {
                       textInputAction: TextInputAction.search,
                       onSubmitted: (_) => _buscarDestino(),
                       decoration: InputDecoration(
-                        hintText: '¿A dónde vas? Dirección o lugar',
+                        hintText: b.modoTrayecto
+                            ? '¿A dónde vas? Dirección o lugar'
+                            : '¿Cerca de dónde buscas? Dirección o lugar',
                         border: InputBorder.none,
                         filled: true,
                         fillColor: tema.colorScheme.surface,
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20, vertical: 14),
-                        prefixIcon: const Icon(Icons.search),
+                        prefixIcon: const Icon(Icons.place_outlined),
                         suffixIcon: _buscandoDestino
                             ? const Padding(
                                 padding: EdgeInsets.all(14),
@@ -139,12 +202,9 @@ class _MapaScreenState extends State<MapaScreen> {
                                     child: CircularProgressIndicator(
                                         strokeWidth: 2)))
                             : IconButton(
-                                tooltip: 'Usar mi ubicación',
-                                icon: const Icon(Icons.my_location),
-                                onPressed: () {
-                                  _texto.clear();
-                                  b.obtenerUbicacion();
-                                },
+                                tooltip: 'Buscar destino',
+                                icon: const Icon(Icons.search),
+                                onPressed: _buscarDestino,
                               ),
                       ),
                     ),
@@ -154,7 +214,47 @@ class _MapaScreenState extends State<MapaScreen> {
                   if (b.destino != null)
                     _Aviso('Destino: ${b.destino!.nombre}',
                         tema.colorScheme.secondaryContainer),
+                  if (b.modoTrayecto &&
+                      (b.miUbicacion == null || b.destino == null))
+                    _Aviso(
+                      b.miUbicacion == null
+                          ? (b.errorUbicacion ??
+                              'Define tu origen con el botón de ubicación.')
+                          : 'Origen listo. Busca el destino al que quieres ir.',
+                      tema.colorScheme.tertiaryContainer,
+                    ),
                 ],
+              ),
+            ),
+          ),
+          Positioned(
+            right: 12,
+            top: 200,
+            child: Material(
+              color: tema.colorScheme.surface,
+              elevation: 4,
+              borderRadius: BorderRadius.circular(28),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton.filledTonal(
+                      tooltip: 'Cerca de mí',
+                      isSelected: !b.modoTrayecto,
+                      icon: const Icon(Icons.near_me_outlined),
+                      selectedIcon: const Icon(Icons.near_me),
+                      onPressed: () => _buscarCercaDeMi(b),
+                    ),
+                    IconButton.filledTonal(
+                      tooltip: 'Desde mi ubicación',
+                      isSelected: b.modoTrayecto,
+                      icon: const Icon(Icons.route_outlined),
+                      selectedIcon: const Icon(Icons.route),
+                      onPressed: () => _activarModoTrayecto(b),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -162,7 +262,10 @@ class _MapaScreenState extends State<MapaScreen> {
               left: 12,
               right: 12,
               bottom: 12,
-              child: _PanelRadio(onVerLista: widget.onVerLista)),
+              child: _PanelRadio(
+                onVerLista: widget.onVerLista,
+                onVerRecomendacion: widget.onVerRecomendacion,
+              )),
         ],
       ),
     );
@@ -258,7 +361,11 @@ class _Aviso extends StatelessWidget {
 
 class _PanelRadio extends StatelessWidget {
   final VoidCallback onVerLista;
-  const _PanelRadio({required this.onVerLista});
+  final VoidCallback onVerRecomendacion;
+  const _PanelRadio({
+    required this.onVerLista,
+    required this.onVerRecomendacion,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -287,8 +394,10 @@ class _PanelRadio extends StatelessWidget {
                     child: CircularProgressIndicator(strokeWidth: 2))
               else
                 TextButton(
-                  onPressed: onVerLista,
-                  child: Text('Comparar (${b.resultados.length})'),
+                  onPressed: b.modoTrayecto ? onVerRecomendacion : onVerLista,
+                  child: Text(b.modoTrayecto
+                      ? 'Ver costos'
+                      : 'Comparar (${b.resultados.length})'),
                 ),
             ]),
             Slider(

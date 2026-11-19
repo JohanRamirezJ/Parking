@@ -85,6 +85,12 @@ def test_token_expirado(client, app):
     assert r.status_code == 401 and r.get_json()["error"]["codigo"] == "token_expirado"
 
 
+def test_nombre_de_parqueadero_demo_se_muestra_como_referencia():
+    p = Parqueadero(nombre="Parqueadero Central (demo)", direccion="Calle 1",
+                    latitud=LAT, longitud=LON)
+    assert p.to_dict()["nombre"] == "Parqueadero Central -"
+
+
 # ---- HU 6, 7, 12 / RF-04, RF-07 ----
 def test_busqueda_por_radio_ordenada_por_distancia(client):
     r = client.get(f"/api/parqueaderos?lat={LAT}&lon={LON}&radio=1000")
@@ -190,8 +196,38 @@ def test_chat_expone_aviso_si_falla_el_modelo(client, auth, monkeypatch):
                     headers=auth).get_json()
     assert d["aviso_ia"] == aviso
     assert aviso in d["respuesta"]
+    assert f"\n\n{aviso}" in d["respuesta"]
     assert d["fuente_datos"] == "directorio_local"
     assert d["parqueadero_recomendado"]["fuente"] == "directorio_local"
+
+
+def test_chat_usa_reglas_si_falla_interpretacion_ia(client, auth, monkeypatch):
+    _usar_candidatos_osm(monkeypatch)
+    aviso = "Aviso de IA: Gemini agotó el tiempo. Se muestra una respuesta de respaldo."
+    monkeypatch.setattr(
+        "app.services.chat._interpretar_con_ia",
+        lambda *_: (None, aviso, "Gemini", "gemini-test"),
+    )
+    monkeypatch.setattr(
+        "app.services.chat._respuesta_llm",
+        lambda *_: ("Respuesta basada en los resultados.", None),
+    )
+
+    d = client.post(
+        "/api/chat",
+        json={"mensaje": "parqueadero barato cerca del hospital San Ignacio"},
+        headers=auth,
+    ).get_json()
+
+    assert d["intencion"]["perfil"] == "precio"
+    assert d["intencion"]["tarifa_max"] is None
+    assert d["intencion"]["destino_texto"] == "hospital san ignacio"
+    assert d["interpretacion_ia_usada"] is False
+    assert d["ia_usada"] is True
+    assert d["aviso_ia"] == aviso
+    assert d["respuesta"].count(aviso) == 1
+    assert d["fuente_datos"] == "openstreetmap"
+    assert "Respuesta basada en los resultados." in d["respuesta"]
 
 
 def test_chat_interpreta_presupuesto():
@@ -251,12 +287,13 @@ def test_chat_muestra_error_si_overpass_no_responde(client, auth, monkeypatch):
     monkeypatch.setattr("app.services.chat.buscar_cercanos_osm", falla)
     d = client.post("/api/chat", json={"mensaje": "cerca del hospital San Ignacio"}, headers=auth).get_json()
     assert d["aviso_osm"] == "Alerta de búsqueda: Overpass está saturado."
-    assert d["aviso_osm"] in d["respuesta"]
+    assert "Overpass" not in d["respuesta"]
     assert d["fuente_datos"] == "directorio_local"
     assert d["parqueadero_recomendado"]["fuente"] == "directorio_local"
 
 
-def test_chat_redacta_con_ia_con_opciones_locales_si_overpass_falla(client, auth, monkeypatch):
+def test_chat_redacta_con_ia_con_opciones_locales_si_overpass_falla(
+        client, auth, app, monkeypatch):
     llamada = {}
 
     def falla(lat, lon, radio):
@@ -270,6 +307,12 @@ def test_chat_redacta_con_ia_con_opciones_locales_si_overpass_falla(client, auth
 
     monkeypatch.setattr("app.services.chat.buscar_cercanos_osm", falla)
     monkeypatch.setattr("app.services.chat._respuesta_llm", redactar)
+    monkeypatch.setattr(
+        "app.services.chat._interpretar_con_ia",
+        lambda *_: (None, None, "Gemini", "test-gemini-model"),
+    )
+    app.config["GEMINI_API_KEY"] = "test-gemini-key"
+    app.config["GEMINI_MODEL"] = "test-gemini-model"
     d = client.post("/api/chat", json={"mensaje": "parqueadero cerca del hospital San Ignacio"},
                     headers=auth).get_json()
 
@@ -278,7 +321,10 @@ def test_chat_redacta_con_ia_con_opciones_locales_si_overpass_falla(client, auth
     assert d["fuente_datos"] == "directorio_local"
     assert d["parqueadero_recomendado"]["fuente"] == "directorio_local"
     assert "Gemini recomienda" in d["respuesta"]
-    assert "Overpass está saturado" in d["respuesta"]
+    assert "Overpass" not in d["respuesta"]
+    assert d["ia_usada"] is True
+    assert d["proveedor_ia"] == "Gemini"
+    assert d["modelo_ia"] == "test-gemini-model"
 
 
 def test_chat_fallback_local_respeta_presupuesto(client, auth, monkeypatch):

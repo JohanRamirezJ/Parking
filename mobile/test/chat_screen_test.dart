@@ -10,7 +10,8 @@ class _FakeApi extends Api {
   Future<Map<String, dynamic>> chat(String mensaje,
           {double? lat, double? lon}) async =>
       {
-        'respuesta': 'Te recomiendo la mejor opción.',
+        'respuesta':
+            'Te recomiendo la mejor opción: tarifa \$5.000, puntaje 92,5.',
         'parqueadero_recomendado': _parqueadero(1, 'Mejor opción'),
         'alternativas': [
           _parqueadero(2, 'Alternativa Uno'),
@@ -52,5 +53,23 @@ void main() {
     expect(find.text('Otras opciones:'), findsOneWidget);
     expect(find.textContaining('Alternativa Uno'), findsOneWidget);
     expect(find.textContaining('Alternativa Dos'), findsOneWidget);
+
+    final richText = tester.widget<RichText>(find.byWidgetPredicate(
+      (widget) =>
+          widget is RichText &&
+          widget.text.toPlainText().contains('tarifa \$5.000'),
+    ));
+    final numerosEnNegrita = <String>[];
+    void recoger(TextSpan span) {
+      if (span.style?.fontWeight == FontWeight.bold) {
+        numerosEnNegrita.add(span.text ?? '');
+      }
+      for (final hijo in span.children ?? const <InlineSpan>[]) {
+        if (hijo is TextSpan) recoger(hijo);
+      }
+    }
+
+    recoger(richText.text as TextSpan);
+    expect(numerosEnNegrita, contains('5.000'));
   });
 }

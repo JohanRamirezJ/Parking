@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -24,6 +25,29 @@ class _Mensaje {
   final Map<String, dynamic>? destino;
   _Mensaje(this.deUsuario, this.texto,
       {this.recomendado, this.alternativas = const [], this.destino});
+}
+
+TextSpan _textoConNumeros(String texto, TextStyle estilo, Color colorNumero) {
+  final partes = <InlineSpan>[];
+  final numeros = RegExp(r'\d+(?:[.,]\d+)*').allMatches(texto);
+  var inicio = 0;
+  for (final numero in numeros) {
+    if (numero.start > inicio) {
+      partes.add(TextSpan(text: texto.substring(inicio, numero.start)));
+    }
+    partes.add(TextSpan(
+      text: numero.group(0),
+      style: estilo.copyWith(
+        color: colorNumero,
+        fontWeight: FontWeight.bold,
+      ),
+    ));
+    inicio = numero.end;
+  }
+  if (inicio < texto.length) {
+    partes.add(TextSpan(text: texto.substring(inicio)));
+  }
+  return TextSpan(style: estilo, children: partes);
 }
 
 class _ChatScreenState extends State<ChatScreen> {
@@ -53,10 +77,37 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     _bajar();
     final b = context.read<Busqueda>();
+    if (kDebugMode) {
+      debugPrint(
+          '[SmartPark chat] Enviando consulta al backend; ubicación incluida: ${b.tieneReferencia}.');
+    }
     try {
       final r = await context.read<Api>().chat(msg,
           lat: b.tieneReferencia ? b.lat : null,
           lon: b.tieneReferencia ? b.lon : null);
+      if (kDebugMode) {
+        final avisoIa = r['aviso_ia'] ?? 'ninguno';
+        final avisoOsm = r['aviso_osm'] ?? 'ninguno';
+        final iaUsada = r['ia_usada'] == true;
+        final interpretacionIaUsada = r['interpretacion_ia_usada'] == true;
+        final proveedor = r['proveedor_ia'] ?? 'ninguno';
+        final estadoIa = iaUsada
+            ? 'el modelo respondió'
+            : avisoIa != 'ninguno'
+                ? 'falló; se usó respuesta de respaldo'
+                : proveedor == 'ninguno'
+                    ? r['parqueadero_recomendado'] == null
+                        ? 'no ejecutada (sin recomendación)'
+                        : 'no configurada; se usó plantilla'
+                    : 'sin respuesta generativa';
+        debugPrint(
+            '[SmartPark chat] fuente=${r['fuente_datos'] ?? 'no indicada'}; '
+            'IA=$estadoIa; '
+            'interpretacionIA=$interpretacionIaUsada; '
+            'proveedor=$proveedor; '
+            'modelo=${r['modelo_ia'] ?? 'ninguno'}; '
+            'avisoIA=$avisoIa; avisoOverpass=$avisoOsm');
+      }
       final rec = r['parqueadero_recomendado'];
       final alternativas = (r['alternativas'] as List)
           .map((x) => Parqueadero.fromJson(Map<String, dynamic>.from(x as Map)))
@@ -71,6 +122,10 @@ class _ChatScreenState extends State<ChatScreen> {
               ? null
               : Map<String, dynamic>.from(r['destino']))));
     } on ApiException catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[SmartPark chat] Error del backend: HTTP ${e.status} (${e.codigo}): ${e.mensaje}');
+      }
       setState(() =>
           _mensajes.add(_Mensaje(false, 'No pude responder: ${e.mensaje}')));
     } finally {
@@ -122,11 +177,16 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(m.texto,
-                                style: TextStyle(
-                                    color: m.deUsuario
-                                        ? t.colorScheme.onPrimary
-                                        : null)),
+                            if (m.deUsuario)
+                              Text(m.texto,
+                                  style:
+                                      TextStyle(color: t.colorScheme.onPrimary))
+                            else
+                              Text.rich(_textoConNumeros(
+                                m.texto,
+                                t.textTheme.bodyMedium ?? const TextStyle(),
+                                t.colorScheme.primary,
+                              )),
                             if (m.recomendado != null) ...[
                               const SizedBox(height: 8),
                               Wrap(spacing: 8, children: [
