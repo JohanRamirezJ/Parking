@@ -26,7 +26,7 @@ Ver la sección "Levantar todo con Docker" del [README principal](../README.md).
 python -m pytest -q
 ```
 
-54 pruebas funcionales trazadas a las historias de usuario y RF del documento de especificaciones.
+175 casos: pruebas unitarias (`tests/test_unit_*.py`: validaciones, geografía y reglas del modelo), funcionales trazadas a las historias de usuario y RF, y de IA/OpenStreetMap. Cobertura de líneas 86 % (`python -m pytest -q --cov=app`). Detalle en `Formulación_Proyectos/Informe de Pruebas Unitarias SmartPark.docx`.
 
 ## Endpoints
 
