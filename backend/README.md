@@ -26,7 +26,14 @@ Ver la sección "Levantar todo con Docker" del [README principal](../README.md).
 python -m pytest -q
 ```
 
-54 pruebas funcionales trazadas a las historias de usuario y RF del documento de especificaciones.
+186 casos: pruebas unitarias (`tests/test_unit_*.py`: validaciones, geografía y reglas del modelo), funcionales trazadas a las historias de usuario y RF, de IA/OpenStreetMap y de seguridad. Cobertura de líneas 87 % (`python -m pytest -q --cov=app`). Detalle en `Formulación_Proyectos/Informe de Pruebas Unitarias SmartPark.docx`.
+
+## Seguridad
+
+- Con `FLASK_ENV=production` la app **no arranca** si `SECRET_KEY` o `JWT_SECRET` están vacías o son valores de ejemplo, y la cookie del panel admin pasa a `Secure` (requiere HTTPS).
+- Login de la API y del panel: bloqueo `429` tras `LOGIN_MAX_INTENTOS` fallos (defecto 10) por IP + correo en `LOGIN_VENTANA_S` segundos (defecto 900). El contador es por proceso (ver [docs/arquitectura.md](../docs/arquitectura.md)).
+- Cabeceras `X-Content-Type-Options`, `X-Frame-Options` y `Referrer-Policy`; CORS configurable con `CORS_ORIGINS`.
+- Documentación completa: [docs/](../docs/README.md).
 
 ## Endpoints
 

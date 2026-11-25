@@ -3,11 +3,13 @@ from datetime import time
 
 from app import create_app
 from app.extensions import db
+from app.services import ratelimit
 from app.models import Parqueadero, Tarifa, Usuario
 
 
 @pytest.fixture()
 def app():
+    ratelimit.reiniciar()
     app = create_app("test")
     with app.app_context():
         admin = Usuario(email="admin@test.co", nombre="Admin", es_admin=True)

@@ -28,8 +28,12 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-smartpark}:${POSTGRES_PASSWORD:-smartpark}@db:5432/${POSTGRES_DB:-smartpark}
+      FLASK_ENV: ${FLASK_ENV:-development}   # production: exige SECRET_KEY/JWT_SECRET propios y cookie Secure (HTTPS)
       SECRET_KEY: ${SECRET_KEY:-cambia-esta-clave}
       JWT_SECRET: ${JWT_SECRET:-cambia-esta-clave-jwt}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      LOGIN_MAX_INTENTOS: ${LOGIN_MAX_INTENTOS:-10}
+      LOGIN_VENTANA_S: ${LOGIN_VENTANA_S:-900}
       SEED_DEMO: ${SEED_DEMO:-1}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}

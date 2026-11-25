@@ -1,10 +1,12 @@
 """SmartPark — backend Flask (API REST + panel web de administración)."""
-import click
 import logging
+import os
+
+import click
 from flask import Flask, redirect, url_for
 from flask_cors import CORS
 
-from .config import get_config
+from .config import SECRETOS_DE_EJEMPLO, get_config
 from .extensions import db
 
 
@@ -12,9 +14,11 @@ def create_app(entorno: str | None = None) -> Flask:
     app = Flask(__name__)
     app.logger.setLevel(logging.INFO)
     app.config.from_object(get_config(entorno))
+    if (entorno or os.getenv("FLASK_ENV")) == "production":
+        _exigir_secretos(app.config)
 
     db.init_app(app)
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    CORS(app, resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}})
 
     from .services.errors import registrar_manejadores
     registrar_manejadores(app)
@@ -23,6 +27,13 @@ def create_app(entorno: str | None = None) -> Flask:
     from .admin import admin_bp
     app.register_blueprint(api_bp)
     app.register_blueprint(admin_bp)
+
+    @app.after_request
+    def _cabeceras_seguridad(resp):
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("Referrer-Policy", "same-origin")
+        return resp
 
     @app.get("/")
     def raiz():
@@ -35,6 +46,14 @@ def create_app(entorno: str | None = None) -> Flask:
 
     _registrar_cli(app)
     return app
+
+
+def _exigir_secretos(config) -> None:
+    """En producción no se arranca con claves vacías o de ejemplo (firman sesiones y tokens)."""
+    for nombre in ("SECRET_KEY", "JWT_SECRET"):
+        valor = config.get(nombre) or ""
+        if not valor or valor in SECRETOS_DE_EJEMPLO:
+            raise RuntimeError(f"Define {nombre} con un valor largo y aleatorio en producción.")
 
 
 # Columnas añadidas después de la v0.1. create_all() no altera tablas existentes, así que

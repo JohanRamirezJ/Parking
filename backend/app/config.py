@@ -5,6 +5,11 @@ SQLite en desarrollo / PostgreSQL en producción (ver Documento_PM, matriz de te
 import os
 
 
+# Valores de ejemplo que NUNCA deben usarse en producción (ver _exigir_secretos en app/__init__.py)
+SECRETOS_DE_EJEMPLO = {"dev-secret-cambiar-en-produccion", "cambia-esta-clave", "cambia-esta-clave-jwt",
+                       "cambia-esto-por-un-valor-largo-y-aleatorio"}
+
+
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-cambiar-en-produccion")
     JWT_SECRET = os.getenv("JWT_SECRET", SECRET_KEY)
@@ -12,6 +17,19 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///smartpark.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JSON_AS_ASCII = False
+
+    # Sesión del panel admin: cookie no accesible por JS; solo por HTTPS en producción
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = os.getenv("FLASK_ENV") == "production"
+    PERMANENT_SESSION_LIFETIME = 8 * 3600  # 8 h
+
+    # CORS de la API: lista separada por comas ("*" por defecto; la app móvil no usa navegador)
+    CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
+
+    # Bloqueo de login tras demasiados intentos fallidos por IP + correo (fuerza bruta)
+    LOGIN_MAX_INTENTOS = int(os.getenv("LOGIN_MAX_INTENTOS", "10"))
+    LOGIN_VENTANA_S = int(os.getenv("LOGIN_VENTANA_S", "900"))  # 15 min
 
     # Radio de búsqueda (metros) — HU 7: límites mínimo y máximo
     RADIO_DEFECTO_M = 1000
@@ -54,5 +72,9 @@ class TestConfig(Config):
     GEMINI_API_KEY = ""
 
 
+class ProductionConfig(Config):
+    SESSION_COOKIE_SECURE = True
+
+
 def get_config(name: str | None):
-    return {"test": TestConfig}.get(name or os.getenv("FLASK_ENV", ""), Config)
+    return {"test": TestConfig, "production": ProductionConfig}.get(name or os.getenv("FLASK_ENV", ""), Config)
