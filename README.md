@@ -7,7 +7,8 @@ Proyecto de Programación Móvil — Ingeniería de Sistemas, 2026.
 smartpark/
 ├── backend/            API REST Flask + panel admin Jinja2 + pruebas (Python) · Dockerfile Ubuntu
 ├── mobile/             App Flutter (Android / iOS / web) · Dockerfile.web
-├── docs/               Documentación técnica (modelo de IA)
+├── docs/               Documentación técnica (arquitectura, API, modelo de datos, IA, despliegue, pruebas)
+├── .github/workflows/  Integración continua (pruebas del backend con SQLite y PostgreSQL, imagen Docker, Flutter)
 ├── docker-compose.yml  PostgreSQL + backend (+ web opcional)
 └── .env.example        Variables de entorno
 ```
@@ -47,6 +48,7 @@ docker compose down -v                # detener y BORRAR la base de datos
 
 Pruebas del backend contra PostgreSQL: `TEST_DATABASE_URL=postgresql+psycopg://usuario:clave@host:puerto/bd_pruebas python -m pytest`.
 
+- **Documentación técnica:** [docs/README.md](docs/README.md)
 - Backend: ver [backend/README.md](backend/README.md)
 - App móvil: ver [mobile/README.md](mobile/README.md)
 
